@@ -1,8 +1,9 @@
-import { useState, type ChangeEvent, type ComponentProps } from 'react'
+import { useEffect, useState, type ChangeEvent, type ComponentProps } from 'react'
 import LoginPage from './pages/LoginPage'
-import { initialMissions, PARTICIPANTS } from './data/missions'
+import { PARTICIPANTS } from './data/missions'
 import type { Mission, MissionStatus } from './data/missions'
 import './App.css'
+import { supabase } from './lib/supabase'
 
 type HouseStatus = 'locked' | 'available' | 'submitted' | 'evaluated'
 type AdminTab = 'missions' | 'submissions'
@@ -11,7 +12,7 @@ type Submission = {
   missionId: string
   day: number
   text: string
-  photo: File | null
+  photo: string | null
   submittedAt: string
 }
 type Evaluation = { stars: number; comment: string; evaluatedAt: string }
@@ -38,9 +39,149 @@ const emptyMission = (day: number): Mission => ({
   status: 'draft',
 })
 
+const USER_EMAILS: Record<string, string> = {
+  jordi: 'jordi@adventcalendar.invalid',
+  caty: 'caty@adventcalendar.invalid',
+  ana: 'ana@adventcalendar.invalid',
+  albert: 'albert@adventcalendar.invalid',
+  admin: 'admin@adventcalendar.invalid',
+}
+
 function App() {
   const [currentUser, setCurrentUser] = useState<string | null>(null)
-  const [missions, setMissions] = useState<Mission[]>(initialMissions)
+
+  useEffect(() => {
+    let active = true
+
+    async function restoreSession() {
+      try {
+        const { data, error } = await supabase.auth.getSession()
+
+        if (error) {
+          console.error('Error al recuperar la sesión:', error.message)
+          return
+        }
+
+        if (!data.session) {
+          return
+        }
+
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('username, display_name, role')
+          .eq('id', data.session.user.id)
+          .single()
+
+        if (!active) return
+
+        if (profileError || !profile) {
+          console.error('Error al restaurar el perfil:', profileError)
+          await supabase.auth.signOut()
+          return
+        }
+
+        setCurrentUser(profile.username)
+      } finally {
+        if (active) {
+          setCheckingSession(false)
+        }
+      }
+    }
+
+    void restoreSession()
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    async function loadMissions() {
+      try {
+        const [
+          { data: missionData, error: missionsError },
+          { data: assignmentData, error: assignmentsError },
+          { data: profileData, error: profilesError },
+        ] = await Promise.all([
+          supabase
+            .from('missions')
+            .select('*')
+            .order('day', { ascending: true }),
+
+          supabase
+            .from('mission_assignments')
+            .select('mission_id, participant_id'),
+
+          supabase
+            .from('profiles')
+            .select('id, username'),
+        ])
+
+        if (missionsError) throw missionsError
+        if (assignmentsError) throw assignmentsError
+        if (profilesError) throw profilesError
+
+        if (!active) return
+
+        const usernameById = new Map(
+          (profileData ?? []).map((profile) => [
+            profile.id,
+            profile.username.toLowerCase(),
+          ]),
+        )
+
+        const assignmentsByMission = new Map<string, string[]>()
+
+        for (const assignment of assignmentData ?? []) {
+          const username = usernameById.get(assignment.participant_id)
+
+          if (!username) continue
+
+          const assignedUsers =
+            assignmentsByMission.get(assignment.mission_id) ?? []
+
+          assignedUsers.push(username)
+          assignmentsByMission.set(assignment.mission_id, assignedUsers)
+        }
+
+        const loadedMissions: Mission[] = (missionData ?? []).map((mission) => ({
+          id: mission.id,
+          day: mission.day,
+          title: mission.title,
+          description: mission.description,
+          durationMinutes: mission.duration_minutes,
+          requiresText: mission.requires_text,
+          allowsPhoto: mission.allows_photo,
+          assignedTo: assignmentsByMission.get(mission.id) ?? [],
+          status: mission.status as MissionStatus,
+        }))
+
+        setMissions(loadedMissions)
+      } catch (error) {
+        console.error('Error al cargar las misiones:', error)
+
+        if (active) {
+          setNotice('No se han podido cargar las misiones y sus asignaciones.')
+        }
+      } finally {
+        if (active) {
+          setLoadingMissions(false)
+        }
+      }
+    }
+
+    void loadMissions()
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const [checkingSession, setCheckingSession] = useState(true)
+  const [missions, setMissions] = useState<Mission[]>([])
+  const [loadingMissions, setLoadingMissions] = useState(true)
   const [responses, setResponses] = useState<Record<string, Submission>>({})
   const [evaluations, setEvaluations] = useState<Record<string, Evaluation>>({})
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
@@ -54,8 +195,106 @@ function App() {
   const [editingMission, setEditingMission] = useState<Mission | null>(null)
   const [editingOriginalId, setEditingOriginalId] = useState<string | null>(null)
   const [missionError, setMissionError] = useState('')
+  const [testMode, setTestMode] = useState(
+    () => localStorage.getItem('advent-test-mode') === 'true'
+  )
+
+  const [testDay, setTestDay] = useState(
+    () => Number(localStorage.getItem('advent-test-day')) || 1
+  )
+  useEffect(() => {
+    localStorage.setItem('advent-test-mode', String(testMode))
+  }, [testMode])
+
+  useEffect(() => {
+    localStorage.setItem('advent-test-day', String(testDay))
+  }, [testDay])
 
   const isAdmin = currentUser?.toLowerCase() === 'admin'
+
+  useEffect(() => {
+    if (!currentUser || isAdmin || loadingMissions) return
+
+    let active = true
+
+    async function loadResponses() {
+      try {
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('id')
+          .ilike('username', currentUser!)
+          .single()
+
+        if (profileError) throw profileError
+
+        const { data: submissions, error: submissionsError } = await supabase
+          .from('submissions')
+          .select('mission_id, participant_id, response_text, photo_path, submitted_at')
+          .eq('participant_id', profile.id)
+
+        if (submissionsError) throw submissionsError
+
+        if (!active) return
+
+        const responsesByKey: Record<string, Submission> = {}
+
+        for (const submission of submissions ?? []) {
+          const mission = missions.find(
+            (item) => item.id === submission.mission_id,
+          )
+
+          if (!mission) continue
+
+          let photoUrl: string | null = null
+
+          if (submission.photo_path) {
+            const { data: photoData, error: photoError } = await supabase.storage
+              .from('mission-photos')
+              .createSignedUrl(submission.photo_path, 3600)
+
+            if (photoError) {
+              console.error(
+                'Error al recuperar la fotografía:',
+                photoError,
+              )
+            } else {
+              photoUrl = photoData.signedUrl
+              console.log('URL de la foto recuperada:', photoUrl)
+            }
+
+          }
+
+          const key = getSubmissionKey(currentUser!, mission.id)
+
+          responsesByKey[key] = {
+            username: currentUser!,
+            missionId: mission.id,
+            day: mission.day,
+            text: submission.response_text ?? '',
+            photo: photoUrl,
+            submittedAt: submission.submitted_at,
+          }
+        }
+
+        if (!active) return
+
+        console.log('Respuestas recuperadas:', responsesByKey)
+
+        setResponses((previous) => ({
+          ...previous,
+          ...responsesByKey,
+        }))
+      } catch (error) {
+        console.error('Error al cargar las respuestas:', error)
+      }
+    }
+
+    void loadResponses()
+
+    return () => {
+      active = false
+    }
+  }, [currentUser, isAdmin, loadingMissions, missions])
 
   function getSubmissionKey(username: string, missionId: string) {
     return `${username}-${missionId}`
@@ -65,20 +304,105 @@ function App() {
     return Object.values(responses).some((response) => response.missionId === missionId)
   }
 
-  function getUserMissions(day: number) {
-    if (!currentUser) return []
-    const aliases: Record<string, string> = { papa: 'papa', papá: 'papa', mama: 'mama', mamá: 'mama', hermana: 'hermana', albert: 'albert' }
-    const userId = aliases[currentUser.toLowerCase()] ?? currentUser.toLowerCase()
-    return missions.filter((mission) => mission.day === day && mission.status === 'prepared' && (mission.assignedTo.length === 0 || mission.assignedTo.includes(userId)))
+  function getCalendarDate() {
+    if (testMode) {
+      return new Date(2026, 11, testDay)
+    }
+
+    return new Date()
   }
 
-  function handleLogin(username: string, _password: string) {
-    // Temporal: la autenticación real se implementará con Supabase.
-    setCurrentUser(username)
+  function getUserMissions(day: number) {
+    console.log('TEST: getUserMissions se está ejecutando')
+    console.log('--- Diagnóstico de misiones ---')
+    console.log('Día consultado:', day)
+    console.log('Usuario actual:', currentUser)
+    console.log('¿Es administrador?:', isAdmin)
+    console.log('Modo de pruebas:', testMode)
+    console.log('Día de prueba:', testDay)
+
+    const today = getCalendarDate()
+
+    console.log('Fecha utilizada:', today.toString())
+    console.log('Mes:', today.getMonth())
+    console.log('Día:', today.getDate())
+    console.log('Misiones cargadas:', missions)
+
+    if (!currentUser || isAdmin) {
+      console.log('Bloqueo: no hay usuario o es administrador')
+      return []
+    }
+
+    if (today.getMonth() !== 11 || day > today.getDate()) {
+      console.log('Bloqueo: fecha no válida para este día')
+      return []
+    }
+
+    const userId = currentUser.toLowerCase()
+
+    const result = missions.filter(
+      (mission) =>
+        mission.day === day &&
+        mission.status === 'prepared' &&
+        mission.assignedTo.includes(userId),
+    )
+
+    console.log('Misiones disponibles para este día:', result)
+
+    return result
+  }
+
+  async function handleLogin(username: string, password: string): Promise<void> {
+    const normalizedUsername = username.trim().toLowerCase()
+    const email = USER_EMAILS[normalizedUsername]
+
+    if (!email) {
+      throw new Error('El usuario introducido no existe.')
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (error) {
+      console.error('Error de inicio de sesión:', error.message)
+      throw new Error(`Error de inicio de sesión: ${error.message}`)
+    }
+
+    if (!data.user) {
+      throw new Error('No se ha podido identificar al usuario.')
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('username, display_name, role')
+      .eq('id', data.user.id)
+      .single()
+
+    if (profileError || !profile) {
+      console.error('Error al cargar el perfil:', profileError)
+      await supabase.auth.signOut()
+      throw new Error(
+        profileError
+          ? `Error al cargar el perfil: ${profileError.message}`
+          : 'No se ha encontrado el perfil del usuario.'
+      )
+    }
+
+    setCurrentUser(profile.username)
     setNotice('')
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    const { error } = await supabase.auth.signOut()
+
+    if (error) {
+      console.error('Error al cerrar sesión:', error)
+      setNotice('No se ha podido cerrar la sesión. Inténtalo de nuevo.')
+      return
+    }
+
     setCurrentUser(null)
     setSelectedDay(null)
     setSelectedMissionId(null)
@@ -88,12 +412,32 @@ function App() {
 
   function getHouseStatus(day: number): HouseStatus {
     if (!currentUser || isAdmin) return 'locked'
+
+    const today = getCalendarDate()
+
+    // El calendario de Adviento solo se desbloquea en diciembre.
+    if (today.getMonth() !== 11 || day > today.getDate()) {
+      return 'locked'
+    }
+
     const dayMissions = getUserMissions(day)
+
+    // Si no tiene misiones asignadas, el día permanece cerrado.
     if (dayMissions.length === 0) return 'locked'
-    const keys = dayMissions.map((mission) => getSubmissionKey(currentUser, mission.id))
-    if (keys.every((key) => Boolean(evaluations[key]))) return 'evaluated'
-    if (keys.some((key) => Boolean(responses[key]))) return 'submitted'
-    return day === 1 ? 'available' : 'locked'
+
+    const keys = dayMissions.map((mission) =>
+      getSubmissionKey(currentUser, mission.id),
+    )
+
+    if (keys.every((key) => Boolean(evaluations[key]))) {
+      return 'evaluated'
+    }
+
+    if (keys.some((key) => Boolean(responses[key]))) {
+      return 'submitted'
+    }
+
+    return 'available'
   }
 
   function openMission(day: number) {
@@ -108,7 +452,7 @@ function App() {
     setSelectedDay(day)
     setSelectedMissionId(mission.id)
     setResponseText(existingResponse?.text ?? '')
-    setSelectedPhoto(existingResponse?.photo ?? null)
+    setSelectedPhoto(null)
     setFormError('')
     setNotice('')
   }
@@ -141,9 +485,13 @@ function App() {
     setFormError('')
   }
 
-  function handleSubmit(event: FormSubmitEvent) {
+  async function handleSubmit(event: FormSubmitEvent) {
     event.preventDefault()
-    if (selectedDay === null || selectedMissionId === null || !currentUser || isAdmin) return
+
+    if (selectedDay === null || selectedMissionId === null || !currentUser || isAdmin) {
+      return
+    }
+
     const mission = missions.find((item) => item.id === selectedMissionId)
     if (!mission) return
 
@@ -151,38 +499,205 @@ function App() {
       setFormError('Escribe tu respuesta antes de enviar la misión.')
       return
     }
+
     if (!mission.requiresText && !responseText.trim() && !selectedPhoto) {
       setFormError('Añade una respuesta o una fotografía antes de enviar.')
       return
     }
 
-    const key = getSubmissionKey(currentUser, mission.id)
-    setResponses((previous) => ({
-      ...previous,
-      [key]: {
-        username: currentUser,
-        missionId: mission.id,
-        day: selectedDay,
-        text: responseText.trim(),
-        photo: selectedPhoto,
-        submittedAt: new Date().toISOString(),
-      },
-    }))
-    setEvaluations((previous) => {
-      const updated = { ...previous }
-      delete updated[key]
-      return updated
-    })
-    closeMission()
-    setNotice('¡Misión enviada! Tu respuesta está pendiente de revisión.')
+    if (selectedPhoto && !selectedPhoto.type.startsWith('image/')) {
+      setFormError('El archivo seleccionado debe ser una imagen.')
+      return
+    }
+
+    if (selectedPhoto && selectedPhoto.size > 5 * 1024 * 1024) {
+      setFormError('La fotografía no puede superar los 5 MB.')
+      return
+    }
+
+    setFormError('')
+
+    try {
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .ilike('username', currentUser)
+        .single()
+
+      if (profileError) throw profileError
+
+      const { data: existingSubmission, error: existingSubmissionError } =
+        await supabase
+          .from('submissions')
+          .select('photo_path')
+          .eq('mission_id', mission.id)
+          .eq('participant_id', profile.id)
+          .maybeSingle()
+
+      if (existingSubmissionError) throw existingSubmissionError
+
+      let photoPath: string | null = existingSubmission?.photo_path ?? null
+      let photoUrl: string | null = null
+      console.log('ID del perfil:', profile.id)
+      console.log('ID de usuario autenticado:', (await supabase.auth.getUser()).data.user?.id)
+
+      if (selectedPhoto) {
+        const extension = selectedPhoto.name.split('.').pop()?.toLowerCase() || 'jpg'
+        const fileName = `${crypto.randomUUID()}.${extension}`
+        photoPath = `${profile.id}/${mission.id}/${fileName}`
+
+        console.log('Bucket:', 'mission-photos', '| Ruta:', photoPath)
+
+        const { data: sessionData } = await supabase.auth.getSession()
+        console.log('Rol de la sesión:', sessionData.session?.user.role)
+        console.log('Usuario autenticado:', sessionData.session?.user.id)
+
+        const { error: uploadError } = await supabase.storage
+          .from('mission-photos')
+          .upload(photoPath, selectedPhoto, {
+            upsert: false,
+            contentType: selectedPhoto.type,
+          })
+
+        if (uploadError) throw uploadError
+      }
+
+      const submittedAt = new Date().toISOString()
+
+      const { error: submissionError } = await supabase
+        .from('submissions')
+        .upsert(
+          {
+            mission_id: mission.id,
+            participant_id: profile.id,
+            response_text: responseText.trim() || null,
+            photo_path: photoPath,
+            submitted_at: submittedAt,
+          },
+          {
+            onConflict: 'mission_id,participant_id',
+          },
+        )
+
+      if (submissionError) throw submissionError
+
+      const key = getSubmissionKey(currentUser, mission.id)
+
+      // Recuperar la URL de la fotografía después de guardar la respuesta.
+      if (photoPath) {
+        const { data: photoData, error: photoError } = await supabase.storage
+          .from('mission-photos')
+          .createSignedUrl(photoPath, 3600)
+
+        if (photoError) throw photoError
+
+        photoUrl = photoData.signedUrl
+      }
+
+      setResponses((previous) => ({
+        ...previous,
+        [key]: {
+          username: currentUser,
+          missionId: mission.id,
+          day: selectedDay,
+          text: responseText.trim(),
+          photo: photoUrl,
+          submittedAt,
+        },
+      }))
+
+      setEvaluations((previous) => {
+        const updated = { ...previous }
+        delete updated[key]
+        return updated
+      })
+
+      closeMission()
+      setNotice('¡Misión enviada! Tu respuesta está pendiente de revisión.')
+
+    } catch (error) {
+      console.error('Error al enviar la misión:', error)
+
+      const message =
+        error instanceof Error ? error.message : JSON.stringify(error)
+
+      setFormError(`No se ha podido enviar la misión: ${message}`)
+
+    }
   }
 
-  function evaluateSubmission(key: string, stars: number, comment: string) {
-    setEvaluations((previous) => ({
-      ...previous,
-      [key]: { stars, comment, evaluatedAt: new Date().toISOString() },
-    }))
-    setNotice('Evaluación guardada correctamente.')
+  async function evaluateSubmission(key: string, stars: number, comment: string) {
+    const submission = responses[key]
+
+    if (!submission) {
+      setNotice('No se ha encontrado la respuesta que quieres evaluar.')
+      return
+    }
+
+    try {
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .ilike('username', submission.username)
+        .single()
+
+      if (profileError) throw profileError
+
+      const { data: savedSubmission, error: submissionError } = await supabase
+        .from('submissions')
+        .select('id')
+        .eq('mission_id', submission.missionId)
+        .eq('participant_id', profile.id)
+        .single()
+
+      if (submissionError) throw submissionError
+
+      const { data: adminProfile, error: adminProfileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .ilike('username', currentUser ?? '')
+        .single()
+
+      if (adminProfileError) throw adminProfileError
+
+      const { error: evaluationError } = await supabase
+        .from('evaluations')
+        .upsert(
+          {
+            submission_id: savedSubmission.id,
+            stars,
+            comment: comment || null,
+            evaluated_by: adminProfile.id,
+            evaluated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: 'submission_id',
+          },
+        )
+
+      if (evaluationError) throw evaluationError
+
+      setEvaluations((previous) => ({
+        ...previous,
+        [key]: {
+          stars,
+          comment,
+          evaluatedAt: new Date().toISOString(),
+        },
+      }))
+
+      setNotice('Evaluación guardada correctamente.')
+
+
+    } catch (error) {
+      console.error('Error al guardar la evaluación:', error)
+
+      const message =
+        error instanceof Error ? error.message : JSON.stringify(error)
+
+      setNotice(`No se ha podido guardar la evaluación: ${message}`)
+
+    }
   }
 
   function startNewMission(day: number) {
@@ -209,27 +724,38 @@ function App() {
     setMissionError('')
   }
 
-  function saveMission(event: FormSubmitEvent) {
+  async function saveMission(event: FormSubmitEvent) {
     event.preventDefault()
     if (!editingMission) return
 
     const title = editingMission.title.trim()
     const description = editingMission.description.trim()
+
     if (!title || !description) {
       setMissionError('Completa el título y la descripción.')
       return
     }
-    if (!Number.isInteger(editingMission.day) || editingMission.day < 1 || editingMission.day > 24) {
+
+    if (
+      !Number.isInteger(editingMission.day) ||
+      editingMission.day < 1 ||
+      editingMission.day > 24
+    ) {
       setMissionError('El día debe estar entre el 1 y el 24.')
       return
     }
-    if (!Number.isFinite(editingMission.durationMinutes) || editingMission.durationMinutes < 1) {
+
+    if (
+      !Number.isFinite(editingMission.durationMinutes) ||
+      editingMission.durationMinutes < 1
+    ) {
       setMissionError('La duración debe ser de al menos un minuto.')
       return
     }
 
     if (editingOriginalId !== null && hasSubmissions(editingOriginalId)) {
       const original = missions.find((item) => item.id === editingOriginalId)
+
       if (original && original.day !== editingMission.day) {
         const ok = window.confirm(
           'Esta misión ya tiene respuestas. Cambiarla de día puede dificultar relacionar las respuestas con la misión original. ¿Quieres continuar?',
@@ -246,29 +772,148 @@ function App() {
       assignedTo: [...editingMission.assignedTo],
     }
 
-    setMissions((previous) => {
-      const withoutOriginal = editingOriginalId === null ? previous : previous.filter((item) => item.id !== editingOriginalId)
-      return [...withoutOriginal, cleanedMission].sort((a, b) => a.day - b.day || a.title.localeCompare(b.title))
-    })
-    setEditingMission(null)
-    setEditingOriginalId(null)
-    setMissionError('')
-    setNotice(`Misión del día ${cleanedMission.day} guardada. Recuerda que los cambios aún no se guardan al recargar la página.`)
+    try {
+      const missionData = {
+        day: cleanedMission.day,
+        title: cleanedMission.title,
+        description: cleanedMission.description,
+        duration_minutes: cleanedMission.durationMinutes,
+        requires_text: cleanedMission.requiresText,
+        allows_photo: cleanedMission.allowsPhoto,
+        status: cleanedMission.status,
+      }
+
+      let savedMissionId = cleanedMission.id
+
+      if (editingOriginalId !== null) {
+        const { error } = await supabase
+          .from('missions')
+          .update(missionData)
+          .eq('id', editingOriginalId)
+
+        if (error) throw error
+
+        savedMissionId = editingOriginalId
+      } else {
+        const { data, error } = await supabase
+          .from('missions')
+          .insert(missionData)
+          .select('id')
+          .single()
+
+        if (error) throw error
+
+        savedMissionId = data.id
+      }
+
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, username')
+
+      if (profilesError) throw profilesError
+
+      const participantIds = new Map(
+        (profiles ?? []).map((profile) => [
+          profile.username.toLowerCase(),
+          profile.id,
+        ]),
+      )
+
+      const selectedProfileIds = cleanedMission.assignedTo
+        .map((username) => participantIds.get(username.toLowerCase()))
+        .filter((id): id is string => Boolean(id))
+
+      const { error: deleteError } = await supabase
+        .from('mission_assignments')
+        .delete()
+        .eq('mission_id', savedMissionId)
+
+      if (deleteError) throw deleteError
+
+      if (selectedProfileIds.length > 0) {
+        const { error: insertError } = await supabase
+          .from('mission_assignments')
+          .insert(
+            selectedProfileIds.map((participantId) => ({
+              mission_id: savedMissionId,
+              participant_id: participantId,
+            })),
+          )
+
+        if (insertError) throw insertError
+      }
+
+      const savedMission: Mission = {
+        ...cleanedMission,
+        id: savedMissionId,
+      }
+
+      setMissions((previous) => {
+        const withoutOriginal =
+          editingOriginalId === null
+            ? previous
+            : previous.filter((item) => item.id !== editingOriginalId)
+
+        return [...withoutOriginal, savedMission].sort(
+          (a, b) => a.day - b.day || a.title.localeCompare(b.title),
+        )
+      })
+
+      setEditingMission(null)
+      setEditingOriginalId(null)
+      setMissionError('')
+      setNotice(`Misión del día ${savedMission.day} guardada correctamente.`)
+    } catch (error) {
+      console.error('Error al guardar la misión:', error)
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : JSON.stringify(error)
+
+      setMissionError(`Error al guardar: ${message}`)
+    }
   }
 
-  function deleteMission(mission: Mission) {
+  async function deleteMission(mission: Mission) {
     const submissionsExist = hasSubmissions(mission.id)
+
     const message = submissionsExist
-      ? `La misión «${mission.title}» del día ${mission.day} tiene respuestas asociadas. Si la eliminas, las respuestas seguirán en memoria, pero ya no tendrán su misión configurada. ¿Eliminar de todos modos?`
+      ? `La misión «${mission.title}» del día ${mission.day} tiene respuestas asociadas. Si la eliminas, las respuestas podrían verse afectadas. ¿Eliminar de todos modos?`
       : `¿Quieres eliminar la misión «${mission.title}» del día ${mission.day}?`
+
     if (!window.confirm(message)) return
 
-    setMissions((previous) => previous.filter((item) => item.id !== mission.id))
+    const { error } = await supabase
+      .from('missions')
+      .delete()
+      .eq('id', mission.id)
+
+    if (error) {
+      console.error('Error al eliminar la misión:', error)
+      setNotice(`No se ha podido eliminar la misión «${mission.title}».`)
+      return
+    }
+
+    setMissions((previous) =>
+      previous.filter((item) => item.id !== mission.id)
+    )
+
     setEditingMission(null)
-    setNotice(`Misión «${mission.title}» eliminada de la configuración actual.`)
+    setNotice(`Misión «${mission.title}» eliminada correctamente.`)
   }
 
-  if (!currentUser) return <LoginPage onLogin={handleLogin} />
+  if (checkingSession) {
+    return null
+  }
+
+  if (loadingMissions) {
+    return null
+  }
+
+  if (!currentUser) {
+    return <LoginPage onLogin={handleLogin} />
+  }
 
   if (isAdmin) {
     const allSubmissions = Object.entries(responses).sort(
@@ -303,141 +948,180 @@ function App() {
         {notice && <div className="app-notice" role="status">{notice}<button type="button" onClick={() => setNotice('')} aria-label="Cerrar aviso">×</button></div>}
 
         {adminTab === 'missions' && (
-          <section className="mission-manager">
-            <div className="manager-heading">
-              <div>
-                <h2>Las 24 ventanas del calendario</h2>
-                <p>Crea las misiones con antelación. Solo las marcadas como preparadas aparecerán en el calendario familiar.</p>
+          <>
+            <div className="test-calendar-panel">
+              <h3>🧪 Modo de pruebas del calendario</h3>
+
+              <label className="test-calendar-toggle">
+                <input
+                  type="checkbox"
+                  checked={testMode}
+                  onChange={(event) => setTestMode(event.target.checked)}
+                />
+                Activar modo de pruebas
+              </label>
+
+              {testMode && (
+                <div className="form-field">
+                  <label htmlFor="test-calendar-day">
+                    Simular día de diciembre
+                  </label>
+
+                  <select
+                    id="test-calendar-day"
+                    value={testDay}
+                    onChange={(event) => setTestDay(Number(event.target.value))}
+                  >
+                    {Array.from({ length: 24 }, (_, index) => index + 1).map((day) => (
+                      <option key={day} value={day}>
+                        Día {day}
+                      </option>
+                    ))}
+                  </select>
+
+                  <p>
+                    Estás simulando el día {testDay} de diciembre.
+                    Las misiones asignadas y preparadas hasta ese día deberían estar disponibles.
+                  </p>
+                </div>
+              )}
+            </div>
+            <section className="mission-manager">
+              <div className="manager-heading">
+                <div>
+                  <h2>Las 24 ventanas del calendario</h2>
+                  <p>Crea las misiones con antelación. Solo las marcadas como preparadas aparecerán en el calendario familiar.</p>
+                </div>
+                <button type="button" className="mission-action manager-new-button" onClick={() => startNewMission(1)}>
+                  + Nueva misión
+                </button>
               </div>
-              <button type="button" className="mission-action manager-new-button" onClick={() => startNewMission(1)}>
-                + Nueva misión
-              </button>
-            </div>
 
-            <div className="mission-day-grid">
-              {Array.from({ length: 24 }, (_, index) => index + 1).map((day) => {
-                const dayMissions = missions.filter((item) => item.day === day).sort((a, b) => a.title.localeCompare(b.title))
-                const submissionCount = Object.values(responses).filter((response) => response.day === day).length
-                const preparedParticipantCount = PARTICIPANTS.filter((participant) =>
-                  dayMissions.some((mission) =>
-                    mission.status === 'prepared' &&
-                    (mission.assignedTo.length === 0 || mission.assignedTo.includes(participant.id)),
-                  ),
-                ).length
-                const allParticipantsPrepared = preparedParticipantCount === PARTICIPANTS.length
-                return (
-                  <article className={`mission-day-card ${dayMissions.length ? 'mission-day-card--prepared' : 'mission-day-card--empty'}`} key={day}>
-                    <div className="mission-day-card__top">
-                      <span className="mission-day-number">{String(day).padStart(2, '0')}</span>
-                      <span className={`mission-state-pill ${dayMissions.some((mission) => mission.status === 'prepared') ? 'is-prepared' : ''}`}>{dayMissions.length ? `${dayMissions.length} misión(es)` : 'Vacío'}</span>
-                    </div>
-                    <div className="day-preparation-status" aria-live="polite">
-                      {allParticipantsPrepared ? (
-                        <span className="day-preparation-badge day-preparation-badge--complete">✓ Día completo · 4/4 preparadas</span>
-                      ) : preparedParticipantCount > 0 ? (
-                        <span className="day-preparation-badge">{preparedParticipantCount}/4 personas con misión preparada</span>
-                      ) : (
-                        <span className="day-preparation-badge day-preparation-badge--empty">Aún faltan misiones preparadas</span>
-                      )}
-                    </div>
-                    {dayMissions.length === 0 && <p className="mission-day-card__description">Todavía no hay misiones para este día.</p>}
-                    <div className="mission-day-mission-list">
-                      {dayMissions.map((mission) => (
-                        <div className="mission-day-mission" key={mission.id}>
-                          <h3>{mission.title}</h3>
-                          <p className="mission-day-card__description">{mission.description}</p>
-                          <div className="mission-day-card__meta">
-                            <span>◷ {mission.durationMinutes} min</span>
-                            <span>{mission.assignedTo.length ? mission.assignedTo.map((id) => PARTICIPANTS.find((participant) => participant.id === id)?.label ?? id).join(', ') : 'Toda la familia'}</span>
-                            <span>{mission.status === 'prepared' ? 'Preparada' : 'Borrador'}</span>
-                          </div>
-                          <div className="mission-day-card__actions">
-                            <button type="button" onClick={() => startEditMission(mission)}>Editar</button>
-                            <button type="button" onClick={() => duplicateMission(mission)}>Duplicar</button>
-                            <button type="button" className="is-danger" onClick={() => deleteMission(mission)}>Eliminar</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mission-day-card__meta">
-                      {submissionCount > 0 && <span>✉ {submissionCount} respuesta(s)</span>}
-                    </div>
-                    <div className="mission-day-card__actions">
-                      <button type="button" className="is-primary" onClick={() => startNewMission(day)}>+ Añadir misión</button>
-                    </div>
-                  </article>
-                )
-              })}
-            </div>
-
-            {editingMission && (
-              <div className="mission-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { setEditingMission(null); setMissionError('') } }}>
-                <section className="mission-card mission-editor-card" role="dialog" aria-modal="true" aria-labelledby="mission-editor-title">
-                  <button type="button" className="mission-close" onClick={() => { setEditingMission(null); setMissionError('') }} aria-label="Cerrar editor">×</button>
-                  <p className="mission-day">{editingOriginalId === null ? 'NUEVA MISIÓN' : `EDITAR DÍA ${editingMission.day}`}</p>
-                  <h2 id="mission-editor-title">{editingOriginalId === null ? 'Preparar una misión' : 'Editar misión'}</h2>
-                  <form className="mission-form mission-editor-form" onSubmit={saveMission}>
-                    <div className="editor-two-columns">
-                      <div className="form-field">
-                        <label htmlFor="mission-day-number">Día del calendario</label>
-                        <select id="mission-day-number" value={editingMission.day} onChange={(event) => setEditingMission({ ...editingMission, day: Number(event.target.value) })}>
-                          {Array.from({ length: 24 }, (_, i) => i + 1).map((day) => <option key={day} value={day}>Día {day}</option>)}
-                        </select>
+              <div className="mission-day-grid">
+                {Array.from({ length: 24 }, (_, index) => index + 1).map((day) => {
+                  const dayMissions = missions.filter((item) => item.day === day).sort((a, b) => a.title.localeCompare(b.title))
+                  const submissionCount = Object.values(responses).filter((response) => response.day === day).length
+                  const preparedParticipantCount = PARTICIPANTS.filter((participant) =>
+                    dayMissions.some((mission) =>
+                      mission.status === 'prepared' &&
+                      (mission.assignedTo.length === 0 || mission.assignedTo.includes(participant.id)),
+                    ),
+                  ).length
+                  const allParticipantsPrepared = preparedParticipantCount === PARTICIPANTS.length
+                  return (
+                    <article className={`mission-day-card ${dayMissions.length ? 'mission-day-card--prepared' : 'mission-day-card--empty'}`} key={day}>
+                      <div className="mission-day-card__top">
+                        <span className="mission-day-number">{String(day).padStart(2, '0')}</span>
+                        <span className={`mission-state-pill ${dayMissions.some((mission) => mission.status === 'prepared') ? 'is-prepared' : ''}`}>{dayMissions.length ? `${dayMissions.length} misión(es)` : 'Vacío'}</span>
                       </div>
-                      <div className="form-field">
-                        <label htmlFor="mission-duration">Duración estimada (minutos)</label>
-                        <input id="mission-duration" type="number" min="1" max="240" value={editingMission.durationMinutes} onChange={(event) => setEditingMission({ ...editingMission, durationMinutes: Number(event.target.value) })} />
+                      <div className="day-preparation-status" aria-live="polite">
+                        {allParticipantsPrepared ? (
+                          <span className="day-preparation-badge day-preparation-badge--complete">✓ Día completo · 4/4 preparadas</span>
+                        ) : preparedParticipantCount > 0 ? (
+                          <span className="day-preparation-badge">{preparedParticipantCount}/4 personas con misión preparada</span>
+                        ) : (
+                          <span className="day-preparation-badge day-preparation-badge--empty">Aún faltan misiones preparadas</span>
+                        )}
                       </div>
-                    </div>
-                    <div className="form-field">
-                      <label htmlFor="mission-title-input">Título</label>
-                      <input id="mission-title-input" value={editingMission.title} onChange={(event) => setEditingMission({ ...editingMission, title: event.target.value })} placeholder="Ej. Un paseo especial" />
-                    </div>
-                    <div className="form-field">
-                      <label htmlFor="mission-description-input">Descripción e instrucciones</label>
-                      <textarea id="mission-description-input" rows={4} value={editingMission.description} onChange={(event) => setEditingMission({ ...editingMission, description: event.target.value })} placeholder="Explica qué debe hacer la persona..." />
-                    </div>
-
-                    <fieldset className="editor-fieldset">
-                      <legend>¿Quién debe hacerla?</legend>
-                      <p className="editor-help">Si no marcas a nadie, la misión será para cualquier participante.</p>
-                      <div className="participant-checkboxes">
-                        {PARTICIPANTS.map((participant) => (
-                          <label key={participant.id}>
-                            <input type="checkbox" checked={editingMission.assignedTo.includes(participant.id)} onChange={(event) => {
-                              const assignedTo = event.target.checked
-                                ? [...editingMission.assignedTo, participant.id]
-                                : editingMission.assignedTo.filter((id) => id !== participant.id)
-                              setEditingMission({ ...editingMission, assignedTo })
-                            }} />
-                            {participant.label}
-                          </label>
+                      {dayMissions.length === 0 && <p className="mission-day-card__description">Todavía no hay misiones para este día.</p>}
+                      <div className="mission-day-mission-list">
+                        {dayMissions.map((mission) => (
+                          <div className="mission-day-mission" key={mission.id}>
+                            <h3>{mission.title}</h3>
+                            <p className="mission-day-card__description">{mission.description}</p>
+                            <div className="mission-day-card__meta">
+                              <span>◷ {mission.durationMinutes} min</span>
+                              <span>{mission.assignedTo.length ? mission.assignedTo.map((id) => PARTICIPANTS.find((participant) => participant.id === id)?.label ?? id).join(', ') : 'Toda la familia'}</span>
+                              <span>{mission.status === 'prepared' ? 'Preparada' : 'Borrador'}</span>
+                            </div>
+                            <div className="mission-day-card__actions">
+                              <button type="button" onClick={() => startEditMission(mission)}>Editar</button>
+                              <button type="button" onClick={() => duplicateMission(mission)}>Duplicar</button>
+                              <button type="button" className="is-danger" onClick={() => deleteMission(mission)}>Eliminar</button>
+                            </div>
+                          </div>
                         ))}
                       </div>
-                    </fieldset>
-
-                    <fieldset className="editor-fieldset">
-                      <legend>Tipo de respuesta</legend>
-                      <label className="editor-switch"><input type="checkbox" checked={editingMission.requiresText} onChange={(event) => setEditingMission({ ...editingMission, requiresText: event.target.checked })} /> Requiere respuesta escrita</label>
-                      <label className="editor-switch"><input type="checkbox" checked={editingMission.allowsPhoto} onChange={(event) => setEditingMission({ ...editingMission, allowsPhoto: event.target.checked })} /> Permite adjuntar fotografía</label>
-                    </fieldset>
-
-                    <fieldset className="editor-fieldset">
-                      <legend>Estado de la misión</legend>
-                      <label className="editor-switch"><input type="radio" name="mission-status" checked={editingMission.status === 'draft'} onChange={() => setEditingMission({ ...editingMission, status: 'draft' as MissionStatus })} /> Borrador (no visible)</label>
-                      <label className="editor-switch"><input type="radio" name="mission-status" checked={editingMission.status === 'prepared'} onChange={() => setEditingMission({ ...editingMission, status: 'prepared' as MissionStatus })} /> Preparada (visible cuando corresponda)</label>
-                    </fieldset>
-
-                    {missionError && <p className="login-error" role="alert">{missionError}</p>}
-                    <div className="editor-form-actions">
-                      <button type="button" className="editor-cancel-button" onClick={() => { setEditingMission(null); setMissionError('') }}>Cancelar</button>
-                      <button type="submit" className="mission-action">Guardar misión</button>
-                    </div>
-                  </form>
-                </section>
+                      <div className="mission-day-card__meta">
+                        {submissionCount > 0 && <span>✉ {submissionCount} respuesta(s)</span>}
+                      </div>
+                      <div className="mission-day-card__actions">
+                        <button type="button" className="is-primary" onClick={() => startNewMission(day)}>+ Añadir misión</button>
+                      </div>
+                    </article>
+                  )
+                })}
               </div>
-            )}
-          </section>
+
+              {editingMission && (
+                <div className="mission-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { setEditingMission(null); setMissionError('') } }}>
+                  <section className="mission-card mission-editor-card" role="dialog" aria-modal="true" aria-labelledby="mission-editor-title">
+                    <button type="button" className="mission-close" onClick={() => { setEditingMission(null); setMissionError('') }} aria-label="Cerrar editor">×</button>
+                    <p className="mission-day">{editingOriginalId === null ? 'NUEVA MISIÓN' : `EDITAR DÍA ${editingMission.day}`}</p>
+                    <h2 id="mission-editor-title">{editingOriginalId === null ? 'Preparar una misión' : 'Editar misión'}</h2>
+                    <form className="mission-form mission-editor-form" onSubmit={saveMission}>
+                      <div className="editor-two-columns">
+                        <div className="form-field">
+                          <label htmlFor="mission-day-number">Día del calendario</label>
+                          <select id="mission-day-number" value={editingMission.day} onChange={(event) => setEditingMission({ ...editingMission, day: Number(event.target.value) })}>
+                            {Array.from({ length: 24 }, (_, i) => i + 1).map((day) => <option key={day} value={day}>Día {day}</option>)}
+                          </select>
+                        </div>
+                        <div className="form-field">
+                          <label htmlFor="mission-duration">Duración estimada (minutos)</label>
+                          <input id="mission-duration" type="number" min="1" max="240" value={editingMission.durationMinutes} onChange={(event) => setEditingMission({ ...editingMission, durationMinutes: Number(event.target.value) })} />
+                        </div>
+                      </div>
+                      <div className="form-field">
+                        <label htmlFor="mission-title-input">Título</label>
+                        <input id="mission-title-input" value={editingMission.title} onChange={(event) => setEditingMission({ ...editingMission, title: event.target.value })} placeholder="Ej. Un paseo especial" />
+                      </div>
+                      <div className="form-field">
+                        <label htmlFor="mission-description-input">Descripción e instrucciones</label>
+                        <textarea id="mission-description-input" rows={4} value={editingMission.description} onChange={(event) => setEditingMission({ ...editingMission, description: event.target.value })} placeholder="Explica qué debe hacer la persona..." />
+                      </div>
+
+                      <fieldset className="editor-fieldset">
+                        <legend>¿Quién debe hacerla?</legend>
+                        <p className="editor-help">Si no marcas a nadie, la misión será para cualquier participante.</p>
+                        <div className="participant-checkboxes">
+                          {PARTICIPANTS.map((participant) => (
+                            <label key={participant.id}>
+                              <input type="checkbox" checked={editingMission.assignedTo.includes(participant.id)} onChange={(event) => {
+                                const assignedTo = event.target.checked
+                                  ? [...editingMission.assignedTo, participant.id]
+                                  : editingMission.assignedTo.filter((id) => id !== participant.id)
+                                setEditingMission({ ...editingMission, assignedTo })
+                              }} />
+                              {participant.label}
+                            </label>
+                          ))}
+                        </div>
+                      </fieldset>
+
+                      <fieldset className="editor-fieldset">
+                        <legend>Tipo de respuesta</legend>
+                        <label className="editor-switch"><input type="checkbox" checked={editingMission.requiresText} onChange={(event) => setEditingMission({ ...editingMission, requiresText: event.target.checked })} /> Requiere respuesta escrita</label>
+                        <label className="editor-switch"><input type="checkbox" checked={editingMission.allowsPhoto} onChange={(event) => setEditingMission({ ...editingMission, allowsPhoto: event.target.checked })} /> Permite adjuntar fotografía</label>
+                      </fieldset>
+
+                      <fieldset className="editor-fieldset">
+                        <legend>Estado de la misión</legend>
+                        <label className="editor-switch"><input type="radio" name="mission-status" checked={editingMission.status === 'draft'} onChange={() => setEditingMission({ ...editingMission, status: 'draft' as MissionStatus })} /> Borrador (no visible)</label>
+                        <label className="editor-switch"><input type="radio" name="mission-status" checked={editingMission.status === 'prepared'} onChange={() => setEditingMission({ ...editingMission, status: 'prepared' as MissionStatus })} /> Preparada (visible cuando corresponda)</label>
+                      </fieldset>
+
+                      {missionError && <p className="login-error" role="alert">{missionError}</p>}
+                      <div className="editor-form-actions">
+                        <button type="button" className="editor-cancel-button" onClick={() => { setEditingMission(null); setMissionError('') }}>Cancelar</button>
+                        <button type="submit" className="mission-action">Guardar misión</button>
+                      </div>
+                    </form>
+                  </section>
+                </div>
+              )}
+            </section>
+          </>
         )}
 
         {adminTab === 'submissions' && (
@@ -539,6 +1223,7 @@ function App() {
             <div className="mission-meta"><span>◷ {selectedMission.durationMinutes} minutos</span><span>{selectedStatus === 'evaluated' ? '✓ Evaluada' : selectedStatus === 'submitted' ? '✓ Enviada' : '✦ Tu misión'}</span></div>
             {currentEvaluation && <div className="participant-evaluation"><p>Tu misión ha sido evaluada</p><div className="evaluation-stars" aria-label={`${currentEvaluation.stars} estrellas`}>{'★'.repeat(currentEvaluation.stars)}{'☆'.repeat(3 - currentEvaluation.stars)}</div>{currentEvaluation.comment && <p>{currentEvaluation.comment}</p>}</div>}
             <form className="mission-form" onSubmit={handleSubmit}>
+              {currentResponse?.photo && (<div className="form-field"> <label>Fotografía enviada</label> <img className="submission-photo" src={currentResponse.photo} alt="Fotografía que enviaste para esta misión" /> </div>)}
               {selectedMission.requiresText && <div className="form-field"><label htmlFor="mission-response">Tu respuesta</label><textarea id="mission-response" rows={4} value={responseText} onChange={(event) => setResponseText(event.target.value)} placeholder="Escribe aquí tu respuesta..." required /></div>}
               {selectedMission.allowsPhoto && <div className="form-field"><label htmlFor="mission-photo">Añadir fotografía (opcional)</label><input id="mission-photo" type="file" accept="image/*" onChange={handlePhotoChange} />{selectedPhoto && <span className="selected-photo">Fotografía seleccionada: {selectedPhoto.name}<button type="button" onClick={() => setSelectedPhoto(null)}>Quitar</button></span>}</div>}
               {formError && <p className="login-error" role="alert">{formError}</p>}
@@ -566,7 +1251,8 @@ function SubmissionCard({ submission, mission, evaluation, onEvaluate }: Submiss
     <article className="submission-card">
       <div className="submission-card__header"><div><p className="submission-day">DÍA {submission.day}</p><h2>{mission?.title ?? 'Misión eliminada o modificada'}</h2><p className="submission-user">Respuesta de <strong>{submission.username}</strong></p></div><span className={`submission-status ${evaluation ? 'submission-status--evaluated' : ''}`}>{evaluation ? 'Evaluada' : 'Pendiente'}</span></div>
       {submission.text && <div className="submission-answer"><h3>Respuesta</h3><p>{submission.text}</p></div>}
-      {submission.photo && <div className="submission-answer"><h3>Fotografía adjunta</h3><p>{submission.photo.name}</p><img className="submission-photo" src={URL.createObjectURL(submission.photo)} alt={`Fotografía enviada por ${submission.username}`} /></div>}
+      {submission.photo && (<div className="submission-answer"> <h3>Fotografía adjunta</h3> <img className="submission-photo" src={submission.photo} alt={`Fotografía enviada por ${submission.username}`} /> </div>)}
+      <p>URL de la imagen recuperada correctamente</p>
       <p className="submission-date">Enviada el {new Date(submission.submittedAt).toLocaleString('es-ES')}</p>
       <div className="submission-evaluation"><h3>Asignar estrellas</h3><div className="star-picker" role="group" aria-label="Puntuación">{[1, 2, 3].map((value) => <button key={value} type="button" className={value <= stars ? 'star-picker__active' : ''} onClick={() => setStars(value)} aria-label={`${value} ${value === 1 ? 'estrella' : 'estrellas'}`} aria-pressed={stars === value}>★</button>)}</div>
         <label className="admin-comment-label">Comentario (opcional)<textarea rows={2} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Escribe un mensaje para esta persona..." /></label>

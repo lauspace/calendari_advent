@@ -13,11 +13,12 @@ export type Mission = {
 }
 
 export const PARTICIPANTS = [
-  { id: 'papa', label: 'Papá' },
-  { id: 'mama', label: 'Mamá' },
-  { id: 'hermana', label: 'Hermana' },
-  { id: 'albert', label: 'Albert' },
+{ id: 'jordi', label: 'Jordi' },
+{ id: 'caty', label: 'Caty' },
+{ id: 'ana', label: 'Ana' },
+{ id: 'albert', label: 'Albert' },
 ] as const
+
 
 // Una lista assignedTo vacía significa que la misión es para cualquier participante.
 // Cada misión tiene un id propio: pueden existir varias misiones en el mismo día.

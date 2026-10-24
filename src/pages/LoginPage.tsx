@@ -1,25 +1,40 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import Button from '../components/ui/Button'
 
 type LoginPageProps = {
-onLogin: (username: string, password: string) => void
+onLogin: (username: string, password: string) => Promise<void>
 }
 
 function LoginPage({ onLogin }: LoginPageProps) {
 const [username, setUsername] = useState('')
 const [password, setPassword] = useState('')
 const [error, setError] = useState('')
+const [loading, setLoading] = useState(false)
 
-function handleSubmit(event: React.SubmitEvent<HTMLFormElement>) {
+async function handleSubmit(event: FormEvent<HTMLFormElement>) {
 event.preventDefault()
 
-if (!username.trim() || !password) {
+const normalizedUsername = username.trim()
+
+if (!normalizedUsername || !password) {
   setError('Introduce tu usuario y contraseña.')
   return
 }
 
 setError('')
-onLogin(username.trim(), password)
+setLoading(true)
+
+try {
+  await onLogin(normalizedUsername, password)
+} catch (err) {
+  setError(
+    err instanceof Error
+      ? err.message
+      : 'No se ha podido iniciar sesión. Comprueba tus datos e inténtalo de nuevo.',
+  )
+} finally {
+  setLoading(false)
+}
 
 }
 
@@ -43,6 +58,7 @@ Una Navidad para compartir </p>
           value={username}
           onChange={(event) => setUsername(event.target.value)}
           required
+          disabled={loading}
         />
       </div>
 
@@ -56,6 +72,7 @@ Una Navidad para compartir </p>
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           required
+          disabled={loading}
         />
       </div>
 
@@ -65,8 +82,8 @@ Una Navidad para compartir </p>
         </p>
       )}
 
-      <Button type="submit" className="login-submit">
-        Entrar
+      <Button type="submit" className="login-submit" disabled={loading}>
+        {loading ? 'Entrando…' : 'Entrar'}
       </Button>
     </form>
   </section>
