@@ -19,7 +19,7 @@ export default function VillagePreview() {
         </div>
       </header>
 
-      <section className="map-container" aria-label="Mapa del pueblo nevado">\
+      <section className="map-container" aria-label="Mapa del pueblo nevado">
         <VillageScene />
         {/*<VillageScene litHouses={[]} />*/}
 

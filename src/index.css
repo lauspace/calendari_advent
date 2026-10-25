@@ -128,7 +128,7 @@ button {
   aspect-ratio: 858 / 784;
 }
 
-.walking-elf {
+.walking-character {
   position: absolute;
   z-index: 2;
   width: 14%;
@@ -137,7 +137,55 @@ button {
   transform: translate(-50%, -50%);
 }
 
-.walking-elf canvas {
+.walking-character canvas {
+  display: block;
+  pointer-events: none;
+}
+
+.character-name-target {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 50%;
+  width: 38%;
+  height: 28%;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+
+.character-name-target::after {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(35, 43, 55, 0.9);
+  color: #fff;
+  content: attr(data-character-name);
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 3px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.character-name-target:hover::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.village-bench-model {
+  position: absolute;
+  z-index: 1;
+  width: 9%;
+  height: 11%;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.village-bench-model canvas {
   display: block;
 }
 

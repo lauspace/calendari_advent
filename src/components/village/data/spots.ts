@@ -1,32 +1,39 @@
 /* Posiciones de los objetos decorativos del mapa. */
 
-/** Dónde "pisa" cada casa (base) y qué puerta usa */
+/** Base de cada casa, puerta asociada y rotación en radianes. */
 export const HOUSE_SPOTS = [
-  { id: 1, x: 170, y: 190, door: "h1" },
-  { id: 2, x: 310, y: 190, door: "h2" },
-  { id: 3, x: 450, y: 210, door: "h3" },
-  { id: 4, x: 600, y: 215, door: "h4" },
-  { id: 5, x: 750, y: 225, door: "h5" },
-  { id: 6, x: 120, y: 300, door: "h6" },
-  { id: 7, x: 300, y: 315, door: "h7" },
-  { id: 8, x: 480, y: 320, door: "h8" },
-  { id: 9, x: 730, y: 340, door: "h9" },
-  { id: 10, x: 140, y: 415, door: "h10" },
-  { id: 11, x: 260, y: 420, door: "h11" },
-  { id: 12, x: 350, y: 410, door: "h12" },
-  { id: 13, x: 510, y: 420, door: "h13" },
-  { id: 14, x: 690, y: 470, door: "h14" },
-  { id: 15, x: 370, y: 495, door: "h15" },
-  { id: 16, x: 580, y: 485, door: "h16" },
-  { id: 17, x: 800, y: 535, door: "h17" },
-  { id: 18, x: 155, y: 600, door: "h18" },
-  { id: 19, x: 280, y: 650, door: "h19" },
-  { id: 20, x: 435, y: 575, door: "h20" },
-  { id: 21, x: 520, y: 645, door: "h21" },
-  { id: 22, x: 580, y: 575, door: "h22" },
-  { id: 23, x: 680, y: 625, door: "h23" },
-  { id: 24, x: 590, y: 325, door: "h24" },
+  { id: 1, x: 170, y: 190, rotation: 0, door: "h1" },
+  { id: 2, x: 310, y: 190, rotation: 0, door: "h2" },
+  { id: 3, x: 450, y: 210, rotation: 0, door: "h3" },
+  { id: 4, x: 600, y: 215, rotation: 0, door: "h4" },
+  { id: 5, x: 750, y: 225, rotation: 0, door: "h5" },
+  { id: 6, x: 120, y: 300, rotation: 0, door: "h6" },
+  { id: 7, x: 300, y: 315, rotation: 0, door: "h7" },
+  { id: 8, x: 480, y: 320, rotation: 0, door: "h8" },
+  { id: 9, x: 730, y: 340, rotation: 0, door: "h9" },
+  { id: 10, x: 140, y: 415, rotation: 0, door: "h10" },
+  { id: 11, x: 260, y: 420, rotation: 0, door: "h11" },
+  { id: 12, x: 350, y: 410, rotation: 0, door: "h12" },
+  { id: 13, x: 510, y: 420, rotation: 0, door: "h13" },
+  { id: 14, x: 690, y: 470, rotation: 0, door: "h14" },
+  { id: 15, x: 370, y: 495, rotation: 0, door: "h15" },
+  { id: 16, x: 580, y: 485, rotation: 0, door: "h16" },
+  { id: 17, x: 800, y: 535, rotation: 0, door: "h17" },
+  { id: 18, x: 155, y: 600, rotation: 0, door: "h18" },
+  { id: 19, x: 280, y: 650, rotation: 0, door: "h19" },
+  { id: 20, x: 435, y: 575, rotation: 0, door: "h20" },
+  { id: 21, x: 520, y: 645, rotation: 0, door: "h21" },
+  { id: 22, x: 580, y: 575, rotation: 0, door: "h22" },
+  { id: 23, x: 680, y: 625, rotation: 0, door: "h23" },
+  { id: 24, x: 590, y: 325, rotation: 0, door: "h24" },
 ] as const;
+
+/** [x, y, rotación, escala] */
+export type BenchSpot = [x: number, y: number, rotation: number, scale: number];
+
+export const BENCH_SPOTS: BenchSpot[] = [
+  [200, 250, Math.PI / 4, 7], [370, 615, Math.PI / 4, 7],
+];
 
 /** Pinos: [x, y, escala] (x, y = base del tronco) */
 export const TREE_SPOTS: Array<[number, number, number]> = [

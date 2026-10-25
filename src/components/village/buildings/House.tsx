@@ -3,6 +3,7 @@
 export interface HouseProps {
   x: number;
   y: number;
+  rotation: number;
   /** Luces encendidas (ventanas brillantes, halo y humo) */
   lit: boolean;
 }
@@ -23,12 +24,12 @@ export function HouseDefs() {
   );
 }
 
-export function House({ x, y, lit }: HouseProps) {
+export function House({ x, y, rotation, lit }: HouseProps) {
   const glass = lit ? "url(#am-win)" : "#39404d";
   const door = lit ? "#ffcf7a" : "#2c313b";
   const heights = [8, 16, 24, 32];
   return (
-    <g transform={`translate(${x} ${y}) scale(0.95)`}>
+    <g transform={`translate(${x} ${y}) rotate(${(rotation * 180) / Math.PI}) scale(0.95)`}>
       {/* sombra proyectada sobre la nieve (luz arriba-izquierda) */}
       <ellipse cx="18" cy="3" rx="58" ry="15" fill="#8fa3ba" opacity="0.4" />
       {lit && <ellipse cx="-16" cy="7" rx="28" ry="8" fill="url(#am-glow)" />}

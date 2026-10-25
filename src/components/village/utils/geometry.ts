@@ -16,6 +16,40 @@ export function pointOnEdge(edge: PathEdge, t: number, reversed = false): Pt {
   };
 }
 
+export function closestPointOnEdge(edge: PathEdge, point: Pt, steps = 32): Pt {
+  let closestPoint = pointOnEdge(edge, 0);
+  let closestDistance = Infinity;
+  let previousPoint = closestPoint;
+
+  for (let i = 1; i <= steps; i++) {
+    const currentPoint = pointOnEdge(edge, i / steps);
+    const segmentX = currentPoint.x - previousPoint.x;
+    const segmentY = currentPoint.y - previousPoint.y;
+    const segmentLengthSquared = segmentX * segmentX + segmentY * segmentY;
+    const projection = segmentLengthSquared === 0
+      ? 0
+      : Math.max(0, Math.min(1, (
+        (point.x - previousPoint.x) * segmentX +
+        (point.y - previousPoint.y) * segmentY
+      ) / segmentLengthSquared));
+    const candidate = {
+      x: previousPoint.x + projection * segmentX,
+      y: previousPoint.y + projection * segmentY,
+    };
+    const distanceX = point.x - candidate.x;
+    const distanceY = point.y - candidate.y;
+    const distance = distanceX * distanceX + distanceY * distanceY;
+
+    if (distance < closestDistance) {
+      closestPoint = candidate;
+      closestDistance = distance;
+    }
+    previousPoint = currentPoint;
+  }
+
+  return closestPoint;
+}
+
 export function edgeLength(edge: PathEdge, steps = 16): number {
   let len = 0;
   let prev = pointOnEdge(edge, 0);
