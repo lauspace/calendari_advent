@@ -4,3 +4,4 @@
  */
 export const MAP_W = 858;
 export const MAP_H = 784;
+export const CHARACTER_SIZE_MULTIPLIER = 1.5;

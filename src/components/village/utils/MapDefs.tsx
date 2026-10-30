@@ -1,5 +1,4 @@
 /* Definiciones SVG compartidas (gradientes, filtros). Se renderiza una sola vez. */
-import { HouseDefs } from "../buildings/House";
 import { PondDefs } from "../nature/Pond";
 
 export function MapDefs() {
@@ -20,7 +19,6 @@ export function MapDefs() {
         <feGaussianBlur stdDeviation="3" />
       </filter>
       <PondDefs />
-      <HouseDefs />
     </defs>
   );
 }

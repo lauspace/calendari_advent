@@ -2,6 +2,9 @@ import { useEffect, useState, type ChangeEvent, type ComponentProps } from 'reac
 import LoginPage from './pages/LoginPage'
 import { PARTICIPANTS } from './data/missions'
 import type { Mission, MissionStatus } from './data/missions'
+import VillageScene from './components/village/VillageScene'
+import { MAP_H, MAP_W } from './components/village/constants'
+import { HOUSE_SPOTS } from './components/village/data/spots'
 import './App.css'
 import { supabase } from './lib/supabase'
 
@@ -19,10 +22,10 @@ type Evaluation = { stars: number; comment: string; evaluatedAt: string }
 type House = { day: number; x: number; y: number }
 type FormSubmitEvent = Parameters<NonNullable<ComponentProps<'form'>['onSubmit']>>[0]
 
-const initialHouses: House[] = Array.from({ length: 24 }, (_, index) => ({
-  day: index + 1,
-  x: 10 + (index % 6) * 16,
-  y: 18 + Math.floor(index / 6) * 19,
+const initialHouses: House[] = HOUSE_SPOTS.map((spot) => ({
+  day: spot.id,
+  x: (spot.x / MAP_W) * 100,
+  y: (spot.y / MAP_H) * 100,
 }))
 
 const createMissionId = () => globalThis.crypto?.randomUUID?.() ?? `mission-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
@@ -97,6 +100,16 @@ function App() {
 
   useEffect(() => {
     let active = true
+
+    if (!currentUser) {
+      setMissions([])
+      setLoadingMissions(false)
+      return () => {
+        active = false
+      }
+    }
+
+    setLoadingMissions(true)
 
     async function loadMissions() {
       try {
@@ -177,7 +190,7 @@ function App() {
     return () => {
       active = false
     }
-  }, [])
+  }, [currentUser])
 
   const [checkingSession, setCheckingSession] = useState(true)
   const [missions, setMissions] = useState<Mission[]>([])
@@ -195,22 +208,93 @@ function App() {
   const [editingMission, setEditingMission] = useState<Mission | null>(null)
   const [editingOriginalId, setEditingOriginalId] = useState<string | null>(null)
   const [missionError, setMissionError] = useState('')
-  const [testMode, setTestMode] = useState(
-    () => localStorage.getItem('advent-test-mode') === 'true'
-  )
-
-  const [testDay, setTestDay] = useState(
-    () => Number(localStorage.getItem('advent-test-day')) || 1
-  )
-  useEffect(() => {
-    localStorage.setItem('advent-test-mode', String(testMode))
-  }, [testMode])
-
-  useEffect(() => {
-    localStorage.setItem('advent-test-day', String(testDay))
-  }, [testDay])
+  const [testMode, setTestMode] = useState(false)
+  const [testDay, setTestDay] = useState(1)
+  const [loadingTestSettings, setLoadingTestSettings] = useState(true)
+  const [savingTestSettings, setSavingTestSettings] = useState(false)
 
   const isAdmin = currentUser?.toLowerCase() === 'admin'
+
+  useEffect(() => {
+    if (!currentUser) return
+
+    let active = true
+
+    async function loadCalendarSettings() {
+      const { data, error } = await supabase
+        .from('calendar_settings')
+        .select('test_mode, test_day')
+        .eq('id', 1)
+        .single()
+
+      if (!active) return
+
+      if (error) {
+        console.error('Error al cargar la configuración del calendario:', error)
+        setNotice('No se ha podido cargar la configuración compartida del calendario.')
+      } else {
+        setTestMode(data.test_mode)
+        setTestDay(data.test_day)
+      }
+
+      setLoadingTestSettings(false)
+    }
+
+    void loadCalendarSettings()
+
+    const channel = supabase
+      .channel('shared-calendar-settings')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'calendar_settings',
+          filter: 'id=1',
+        },
+        (payload) => {
+          const settings = payload.new as {
+            test_mode: boolean
+            test_day: number
+          }
+          setTestMode(settings.test_mode)
+          setTestDay(settings.test_day)
+        },
+      )
+      .subscribe()
+
+    return () => {
+      active = false
+      void supabase.removeChannel(channel)
+    }
+  }, [currentUser])
+
+  async function saveCalendarSettings(testModeValue: boolean, testDayValue: number) {
+    setSavingTestSettings(true)
+
+    const { data, error } = await supabase
+      .from('calendar_settings')
+      .update({
+        test_mode: testModeValue,
+        test_day: testDayValue,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', 1)
+      .select('test_mode, test_day')
+      .single()
+
+    setSavingTestSettings(false)
+
+    if (error) {
+      console.error('Error al guardar la configuración del calendario:', error)
+      setNotice(`No se ha podido guardar la configuración: ${error.message}`)
+      return
+    }
+
+    setTestMode(data.test_mode)
+    setTestDay(data.test_day)
+    setNotice('Configuración del calendario guardada para todos los navegadores.')
+  }
 
   useEffect(() => {
     if (!currentUser || isAdmin || loadingMissions) return
@@ -229,7 +313,7 @@ function App() {
 
         const { data: submissions, error: submissionsError } = await supabase
           .from('submissions')
-          .select('mission_id, participant_id, response_text, photo_path, submitted_at')
+          .select('id, mission_id, participant_id, response_text, photo_path, submitted_at')
           .eq('participant_id', profile.id)
 
         if (submissionsError) throw submissionsError
@@ -284,8 +368,53 @@ function App() {
           ...previous,
           ...responsesByKey,
         }))
+
+        const submissionIds = (submissions ?? []).map((submission) => submission.id)
+
+        if (submissionIds.length > 0) {
+          const { data: evaluationData, error: evaluationsError } = await supabase
+            .from('evaluations')
+            .select('submission_id, stars, comment, evaluated_at')
+            .in('submission_id', submissionIds)
+
+          if (evaluationsError) throw evaluationsError
+          if (!active) return
+
+          const submissionKeyById = new Map<string, string>()
+          const evaluationsByKey: Record<string, Evaluation> = {}
+
+          for (const submission of submissions ?? []) {
+            const mission = missions.find(
+              (item) => item.id === submission.mission_id,
+            )
+
+            if (mission) {
+              submissionKeyById.set(
+                submission.id,
+                getSubmissionKey(currentUser!, mission.id),
+              )
+            }
+          }
+
+          for (const evaluation of evaluationData ?? []) {
+            const key = submissionKeyById.get(evaluation.submission_id)
+
+            if (key) {
+              evaluationsByKey[key] = {
+                stars: evaluation.stars,
+                comment: evaluation.comment ?? '',
+                evaluatedAt: evaluation.evaluated_at,
+              }
+            }
+          }
+
+          setEvaluations((previous) => ({
+            ...previous,
+            ...evaluationsByKey,
+          }))
+        }
       } catch (error) {
-        console.error('Error al cargar las respuestas:', error)
+        console.error('Error al cargar las respuestas y sus evaluaciones:', error)
       }
     }
 
@@ -344,7 +473,8 @@ function App() {
       (mission) =>
         mission.day === day &&
         mission.status === 'prepared' &&
-        mission.assignedTo.includes(userId),
+        (mission.assignedTo.length === 0 ||
+          mission.assignedTo.includes(userId)),
     )
 
     console.log('Misiones disponibles para este día:', result)
@@ -391,6 +521,8 @@ function App() {
     }
 
     setCurrentUser(profile.username)
+    setLoadingTestSettings(true)
+    setLoadingMissions(true)
     setNotice('')
   }
 
@@ -404,6 +536,7 @@ function App() {
     }
 
     setCurrentUser(null)
+    setLoadingTestSettings(true)
     setSelectedDay(null)
     setSelectedMissionId(null)
     setNotice('')
@@ -911,6 +1044,10 @@ function App() {
     return null
   }
 
+  if (currentUser && loadingTestSettings) {
+    return null
+  }
+
   if (!currentUser) {
     return <LoginPage onLogin={handleLogin} />
   }
@@ -956,7 +1093,10 @@ function App() {
                 <input
                   type="checkbox"
                   checked={testMode}
-                  onChange={(event) => setTestMode(event.target.checked)}
+                  disabled={savingTestSettings}
+                  onChange={(event) => {
+                    void saveCalendarSettings(event.target.checked, testDay)
+                  }}
                 />
                 Activar modo de pruebas
               </label>
@@ -970,7 +1110,10 @@ function App() {
                   <select
                     id="test-calendar-day"
                     value={testDay}
-                    onChange={(event) => setTestDay(Number(event.target.value))}
+                    disabled={savingTestSettings}
+                    onChange={(event) => {
+                      void saveCalendarSettings(testMode, Number(event.target.value))
+                    }}
                   >
                     {Array.from({ length: 24 }, (_, index) => index + 1).map((day) => (
                       <option key={day} value={day}>
@@ -1161,57 +1304,97 @@ function App() {
   const selectedStatus = selectedDay !== null ? getHouseStatus(selectedDay) : null
   const currentResponse = selectedMissionId ? responses[getSubmissionKey(currentUser, selectedMissionId)] : undefined
   const currentEvaluation = selectedMissionId ? evaluations[getSubmissionKey(currentUser, selectedMissionId)] : undefined
+  const calendarDate = getCalendarDate()
+  const currentCalendarDay = calendarDate.getMonth() === 11 ? calendarDate.getDate() : null
+  const houseStates = initialHouses.map((house) => {
+    const status = getHouseStatus(house.day)
+    const stars = status === 'evaluated' && currentUser
+      ? missions.filter(
+        (mission) =>
+          mission.day === house.day &&
+          mission.status === 'prepared' &&
+          mission.assignedTo.includes(currentUser.toLowerCase()),
+      ).reduce(
+        (total, mission) => total + (evaluations[getSubmissionKey(currentUser, mission.id)]?.stars ?? 0),
+        0,
+      )
+      : 0
+    return { ...house, status, stars, isCurrentDay: house.day === currentCalendarDay }
+  })
+  const litHouses = houseStates
+    .filter((house) => house.status !== 'locked')
+    .map((house) => house.day)
 
   return (
-    <main className="village-app">
-      <header className="village-header">
-        <div>
-          <p className="village-eyebrow">Una Navidad para compartir</p>
-          <h1>El pueblo de Adviento</h1>
-          <p className="village-subtitle">¡Hola, {currentUser}! Cada día esconde una pequeña sorpresa.</p>
+    <main className="village-app village-app--full-map">
+      <header className="top-bar">
+        <div className="brand">
+          <span className="brand-icon" aria-hidden="true">🌲</span>
+          <span>Calendario de adviento</span>
         </div>
-        <button type="button" className="logout-button" onClick={handleLogout}>Cerrar sesión</button>
+        <details className="account-menu">
+          <summary className="account-menu__trigger" aria-label={`Opciones de ${currentUser}`}>
+            <span className="account-menu__avatar" aria-hidden="true">👩🏻</span>
+            <span>{currentUser}</span>
+            <span className="account-menu__chevron" aria-hidden="true">▾</span>
+          </summary>
+          <div className="account-menu__dropdown">
+            <button type="button" onClick={handleLogout}>Cerrar sesión</button>
+          </div>
+        </details>
       </header>
 
-      <section className="village-legend" aria-label="Estados de las casas">
-        <span><i className="legend-dot legend-dot--available" /> Disponible</span>
-        <span><i className="legend-dot legend-dot--locked" /> Próximamente</span>
-        <span><i className="legend-dot legend-dot--completed" /> Enviada</span>
-      </section>
-
-      {notice && <div className="app-notice" role="status">{notice}<button type="button" onClick={() => setNotice('')} aria-label="Cerrar aviso">×</button></div>}
-
-      <section className="village-scene" aria-label="Pueblo nevado de Adviento">
-        <div className="snowfall" aria-hidden="true" />
-        <div className="mountains mountains--back" aria-hidden="true" />
-        <div className="mountains mountains--front" aria-hidden="true" />
-        <div className="forest forest--left" aria-hidden="true">{Array.from({ length: 7 }, (_, i) => <span className="pine-tree" key={i} style={{ left: `${i * 12}%`, top: `${(i % 3) * 16}%` }} />)}</div>
-        <div className="forest forest--right" aria-hidden="true">{Array.from({ length: 7 }, (_, i) => <span className="pine-tree" key={i} style={{ left: `${i * 12}%`, top: `${(i % 3) * 16}%` }} />)}</div>
-        <div className="village-path village-path--horizontal" aria-hidden="true" />
-        <div className="village-path village-path--vertical" aria-hidden="true" />
-        <div className="village-path village-path--diagonal" aria-hidden="true" />
-        <div className="village-plaza">
-          <div className="christmas-tree" aria-label="Árbol de Navidad"><span className="tree-star">★</span><span className="tree-layer tree-layer--one" /><span className="tree-layer tree-layer--two" /><span className="tree-layer tree-layer--three" /><span className="tree-trunk" /><i className="tree-light tree-light--one" /><i className="tree-light tree-light--two" /><i className="tree-light tree-light--three" /></div>
-          <span className="plaza-label">Plaza de Navidad</span>
+      <section className="map-container map-container--full" aria-label="Mapa del pueblo nevado">
+        <div className="village-calendar-map">
+          <VillageScene
+            litHouses={litHouses}
+            highlightedHouse={currentCalendarDay ?? undefined}
+          />
+          {houseStates.map((house) => {
+            const stateLabel = house.isCurrentDay
+              ? 'Día actual'
+              : house.status === 'locked'
+                ? 'Día futuro o bloqueado'
+                : house.status === 'available'
+                  ? 'Misión pendiente de enviar'
+                  : house.status === 'submitted'
+                    ? 'Misión enviada'
+                    : `Misión evaluada: ${house.stars} estrellas`
+            return (
+              <button
+                key={house.day}
+                type="button"
+                className={`map-house-marker map-house-marker--${house.status}${house.isCurrentDay ? ' map-house-marker--today' : ''}`}
+                style={{ left: `${house.x}%`, top: `${house.y}%` }}
+                onClick={() => openMission(house.day)}
+                disabled={house.status === 'locked'}
+                aria-label={`Día ${house.day}: ${stateLabel}`}
+              >
+                {house.isCurrentDay && (
+                  <span className="map-house-marker__badge map-house-marker__badge--today" aria-hidden="true">✦</span>
+                )}
+                {!house.isCurrentDay && house.status === 'available' && (
+                  <span className="map-house-marker__badge map-house-marker__badge--pending" aria-label="Misión pendiente">✦</span>
+                )}
+                {house.status === 'submitted' && (
+                  <span className="map-house-marker__badge map-house-marker__badge--submitted" aria-label="Misión enviada">✓</span>
+                )}
+                {house.status === 'evaluated' && (
+                  <span className="map-house-marker__badge map-house-marker__badge--evaluated" aria-label={`Evaluada con ${house.stars} estrellas`}>
+                    <span aria-hidden="true">★</span>
+                    <span className="map-house-marker__score">{house.stars}</span>
+                  </span>
+                )}
+              </button>
+            )
+          })}
         </div>
-        <div className="village-bar" aria-label="Bar del pueblo"><span className="bar-sign">EL REFUGIO</span><div className="bar-roof" /><div className="bar-building"><span className="bar-window" /><span className="bar-window" /><span className="bar-door" /></div><div className="bar-terrace"><span className="terrace-table" /><span className="terrace-table terrace-table--two" /></div></div>
-        <div className="training-area" aria-label="Zona de entrenamiento"><span className="training-label">Zona de entrenamiento</span><div className="training-equipment"><span /><i /><span /></div><div className="training-bench" /></div>
-        <div className="village-bridge" aria-label="Puente"><span /><span /><span /></div>
-        <div className="village-bench village-bench--one" aria-hidden="true" />
-        <div className="village-bench village-bench--two" aria-hidden="true" />
-
-        {initialHouses.map((house) => {
-          const status = getHouseStatus(house.day)
-          return (
-            <button key={house.day} type="button" className={`advent-house advent-house--${status}`} style={{ left: `${house.x}%`, top: `${house.y}%` }} onClick={() => openMission(house.day)} disabled={status === 'locked'} aria-label={`Día ${house.day}, ${status === 'locked' ? 'bloqueado' : status}`}>
-              <span className="house-number">{house.day}</span><span className="house-roof" /><span className="house-body"><i className="house-window house-window--left" /><i className="house-window house-window--right" /><i className="house-door" /></span>
-              {status === 'submitted' && <span className="house-check" aria-label="Enviada">✓</span>}
-              {status === 'evaluated' && <span className="house-check" aria-label="Evaluada">★</span>}
-            </button>
-          )
-        })}
+        <div className="star-counter" aria-label="125 estrellas">
+          <span className="star-icon" aria-hidden="true">⭐</span>
+          <span className="star-number">125</span>
+          <span className="star-label">estrellas</span>
+        </div>
       </section>
-      <p className="village-footer">24 días, 24 pequeñas sorpresas. Hecho con cariño para compartir.</p>
 
       {selectedMission && selectedDay !== null && (
         <div className="mission-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeMission() }}>

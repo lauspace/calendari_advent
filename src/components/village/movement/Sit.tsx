@@ -30,6 +30,8 @@ export function Sit({ character, active, pose }: SitProps) {
   }, [character, targets]);
 
   useFrame((_, delta) => {
+    if (!active) return;
+
     const root = character.current;
     if (!root) return;
 
@@ -44,10 +46,9 @@ export function Sit({ character, active, pose }: SitProps) {
         originalRotations.current.set(object, original);
       }
 
-      const factor = active ? 1 : 0;
-      object.rotation.x += (original.x + rotation[0] * factor - object.rotation.x) * amount;
-      object.rotation.y += (original.y + rotation[1] * factor - object.rotation.y) * amount;
-      object.rotation.z += (original.z + rotation[2] * factor - object.rotation.z) * amount;
+      object.rotation.x += (original.x + rotation[0] - object.rotation.x) * amount;
+      object.rotation.y += (original.y + rotation[1] - object.rotation.y) * amount;
+      object.rotation.z += (original.z + rotation[2] - object.rotation.z) * amount;
     }
   });
 
