@@ -1,10 +1,12 @@
-import { useEffect, useState, type ChangeEvent, type ComponentProps } from 'react'
+import { useCallback, useEffect, useState, type ChangeEvent, type ComponentProps } from 'react'
 import LoginPage from './pages/LoginPage'
+import Characters from './pages/Characters'
 import { PARTICIPANTS } from './data/missions'
 import type { Mission, MissionStatus } from './data/missions'
 import VillageScene from './components/village/VillageScene'
 import { MAP_H, MAP_W } from './components/village/constants'
 import { HOUSE_SPOTS } from './components/village/data/spots'
+import { getLanguage, getMissionDescription, getMissionTitle, translate } from './i18n'
 import './App.css'
 import { supabase } from './lib/supabase'
 
@@ -35,7 +37,8 @@ const emptyMission = (day: number): Mission => ({
   day,
   title: '',
   description: '',
-  durationMinutes: 10,
+  titleCa: '',
+  descriptionCa: '',
   requiresText: true,
   allowsPhoto: false,
   assignedTo: [],
@@ -52,6 +55,16 @@ const USER_EMAILS: Record<string, string> = {
 
 function App() {
   const [currentUser, setCurrentUser] = useState<string | null>(null)
+  const language = getLanguage(currentUser)
+  const tr = useCallback(
+    (spanish: string, catalan: string) => translate(language, spanish, catalan),
+    [language],
+  )
+
+  useEffect(() => {
+    document.documentElement.lang = language
+    document.title = translate(language, 'Calendario de Adviento', 'Calendari d’Advent')
+  }, [language])
 
   useEffect(() => {
     let active = true
@@ -162,9 +175,10 @@ function App() {
         const loadedMissions: Mission[] = (missionData ?? []).map((mission) => ({
           id: mission.id,
           day: mission.day,
-          title: mission.title,
-          description: mission.description,
-          durationMinutes: mission.duration_minutes,
+          title: mission.title_es ?? mission.title,
+          description: mission.description_es ?? mission.description,
+          titleCa: mission.title_ca ?? '',
+          descriptionCa: mission.description_ca ?? '',
           requiresText: mission.requires_text,
           allowsPhoto: mission.allows_photo,
           assignedTo: assignmentsByMission.get(mission.id) ?? [],
@@ -176,7 +190,10 @@ function App() {
         console.error('Error al cargar las misiones:', error)
 
         if (active) {
-          setNotice('No se han podido cargar las misiones y sus asignaciones.')
+          setNotice(tr(
+            'No se han podido cargar las misiones y sus asignaciones.',
+            'No s’han pogut carregar les missions i les seves assignacions.',
+          ))
         }
       } finally {
         if (active) {
@@ -190,7 +207,7 @@ function App() {
     return () => {
       active = false
     }
-  }, [currentUser])
+  }, [currentUser, tr])
 
   const [checkingSession, setCheckingSession] = useState(true)
   const [missions, setMissions] = useState<Mission[]>([])
@@ -199,6 +216,7 @@ function App() {
   const [evaluations, setEvaluations] = useState<Record<string, Evaluation>>({})
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
   const [selectedMissionId, setSelectedMissionId] = useState<string | null>(null)
+  const [activePage, setActivePage] = useState<'calendar' | 'characters'>('calendar')
   const [responseText, setResponseText] = useState('')
   const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null)
   const [formError, setFormError] = useState('')
@@ -231,7 +249,10 @@ function App() {
 
       if (error) {
         console.error('Error al cargar la configuración del calendario:', error)
-        setNotice('No se ha podido cargar la configuración compartida del calendario.')
+        setNotice(tr(
+          'No se ha podido cargar la configuración compartida del calendario.',
+          'No s’ha pogut carregar la configuració compartida del calendari.',
+        ))
       } else {
         setTestMode(data.test_mode)
         setTestDay(data.test_day)
@@ -267,7 +288,7 @@ function App() {
       active = false
       void supabase.removeChannel(channel)
     }
-  }, [currentUser])
+  }, [currentUser, tr])
 
   async function saveCalendarSettings(testModeValue: boolean, testDayValue: number) {
     setSavingTestSettings(true)
@@ -287,13 +308,19 @@ function App() {
 
     if (error) {
       console.error('Error al guardar la configuración del calendario:', error)
-      setNotice(`No se ha podido guardar la configuración: ${error.message}`)
+      setNotice(tr(
+        `No se ha podido guardar la configuración: ${error.message}`,
+        `No s’ha pogut desar la configuració: ${error.message}`,
+      ))
       return
     }
 
     setTestMode(data.test_mode)
     setTestDay(data.test_day)
-    setNotice('Configuración del calendario guardada para todos los navegadores.')
+    setNotice(tr(
+      'Configuración del calendario guardada para todos los navegadores.',
+      'S’ha desat la configuració del calendari per a tots els navegadors.',
+    ))
   }
 
   useEffect(() => {
@@ -484,10 +511,13 @@ function App() {
 
   async function handleLogin(username: string, password: string): Promise<void> {
     const normalizedUsername = username.trim().toLowerCase()
+    const loginLanguage = getLanguage(normalizedUsername)
+    const loginTr = (spanish: string, catalan: string) =>
+      translate(loginLanguage, spanish, catalan)
     const email = USER_EMAILS[normalizedUsername]
 
     if (!email) {
-      throw new Error('El usuario introducido no existe.')
+      throw new Error(loginTr('El usuario introducido no existe.', 'Aquest usuari no existeix.'))
     }
 
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -497,11 +527,17 @@ function App() {
 
     if (error) {
       console.error('Error de inicio de sesión:', error.message)
-      throw new Error(`Error de inicio de sesión: ${error.message}`)
+      throw new Error(loginTr(
+        `Error de inicio de sesión: ${error.message}`,
+        `Error en iniciar sessió: ${error.message}`,
+      ))
     }
 
     if (!data.user) {
-      throw new Error('No se ha podido identificar al usuario.')
+      throw new Error(loginTr(
+        'No se ha podido identificar al usuario.',
+        'No s’ha pogut identificar l’usuari.',
+      ))
     }
 
     const { data: profile, error: profileError } = await supabase
@@ -515,8 +551,14 @@ function App() {
       await supabase.auth.signOut()
       throw new Error(
         profileError
-          ? `Error al cargar el perfil: ${profileError.message}`
-          : 'No se ha encontrado el perfil del usuario.'
+          ? loginTr(
+            `Error al cargar el perfil: ${profileError.message}`,
+            `Error en carregar el perfil: ${profileError.message}`,
+          )
+          : loginTr(
+            'No se ha encontrado el perfil del usuario.',
+            'No s’ha trobat el perfil de l’usuari.',
+          )
       )
     }
 
@@ -531,7 +573,10 @@ function App() {
 
     if (error) {
       console.error('Error al cerrar sesión:', error)
-      setNotice('No se ha podido cerrar la sesión. Inténtalo de nuevo.')
+      setNotice(tr(
+        'No se ha podido cerrar la sesión. Inténtalo de nuevo.',
+        'No s’ha pogut tancar la sessió. Torna-ho a provar.',
+      ))
       return
     }
 
@@ -539,6 +584,7 @@ function App() {
     setLoadingTestSettings(true)
     setSelectedDay(null)
     setSelectedMissionId(null)
+    setActivePage('calendar')
     setNotice('')
     setEditingMission(null)
   }
@@ -597,12 +643,15 @@ function App() {
       return
     }
     if (!file.type.startsWith('image/')) {
-      setFormError('Selecciona un archivo de imagen.')
+      setFormError(tr('Selecciona un archivo de imagen.', 'Selecciona un fitxer d’imatge.'))
       event.target.value = ''
       return
     }
     if (file.size > 5 * 1024 * 1024) {
-      setFormError('La fotografía debe ocupar menos de 5 MB.')
+      setFormError(tr(
+        'La fotografía debe ocupar menos de 5 MB.',
+        'La fotografia ha d’ocupar menys de 5 MB.',
+      ))
       event.target.value = ''
       return
     }
@@ -629,22 +678,34 @@ function App() {
     if (!mission) return
 
     if (mission.requiresText && !responseText.trim()) {
-      setFormError('Escribe tu respuesta antes de enviar la misión.')
+      setFormError(tr(
+        'Escribe tu respuesta antes de enviar la misión.',
+        'Escriu la teva resposta abans d’enviar la missió.',
+      ))
       return
     }
 
     if (!mission.requiresText && !responseText.trim() && !selectedPhoto) {
-      setFormError('Añade una respuesta o una fotografía antes de enviar.')
+      setFormError(tr(
+        'Añade una respuesta o una fotografía antes de enviar.',
+        'Afegeix una resposta o una fotografia abans d’enviar.',
+      ))
       return
     }
 
     if (selectedPhoto && !selectedPhoto.type.startsWith('image/')) {
-      setFormError('El archivo seleccionado debe ser una imagen.')
+      setFormError(tr(
+        'El archivo seleccionado debe ser una imagen.',
+        'El fitxer seleccionat ha de ser una imatge.',
+      ))
       return
     }
 
     if (selectedPhoto && selectedPhoto.size > 5 * 1024 * 1024) {
-      setFormError('La fotografía no puede superar los 5 MB.')
+      setFormError(tr(
+        'La fotografía no puede superar los 5 MB.',
+        'La fotografia no pot superar els 5 MB.',
+      ))
       return
     }
 
@@ -746,7 +807,10 @@ function App() {
       })
 
       closeMission()
-      setNotice('¡Misión enviada! Tu respuesta está pendiente de revisión.')
+      setNotice(tr(
+        '¡Misión enviada! Tu respuesta está pendiente de revisión.',
+        'Missió enviada! La teva resposta està pendent de revisió.',
+      ))
 
     } catch (error) {
       console.error('Error al enviar la misión:', error)
@@ -754,7 +818,10 @@ function App() {
       const message =
         error instanceof Error ? error.message : JSON.stringify(error)
 
-      setFormError(`No se ha podido enviar la misión: ${message}`)
+      setFormError(tr(
+        `No se ha podido enviar la misión: ${message}`,
+        `No s’ha pogut enviar la missió: ${message}`,
+      ))
 
     }
   }
@@ -763,7 +830,10 @@ function App() {
     const submission = responses[key]
 
     if (!submission) {
-      setNotice('No se ha encontrado la respuesta que quieres evaluar.')
+      setNotice(tr(
+        'No se ha encontrado la respuesta que quieres evaluar.',
+        'No s’ha trobat la resposta que vols avaluar.',
+      ))
       return
     }
 
@@ -819,7 +889,7 @@ function App() {
         },
       }))
 
-      setNotice('Evaluación guardada correctamente.')
+      setNotice(tr('Evaluación guardada correctamente.', 'Avaluació desada correctament.'))
 
 
     } catch (error) {
@@ -828,7 +898,10 @@ function App() {
       const message =
         error instanceof Error ? error.message : JSON.stringify(error)
 
-      setNotice(`No se ha podido guardar la evaluación: ${message}`)
+      setNotice(tr(
+        `No se ha podido guardar la evaluación: ${message}`,
+        `No s’ha pogut desar l’avaluació: ${message}`,
+      ))
 
     }
   }
@@ -851,6 +924,7 @@ function App() {
       ...mission,
       id: createMissionId(),
       title: `${mission.title} (copia)`,
+      titleCa: `${mission.titleCa} (còpia)`,
       status: 'draft',
       assignedTo: [...mission.assignedTo],
     })
@@ -863,9 +937,14 @@ function App() {
 
     const title = editingMission.title.trim()
     const description = editingMission.description.trim()
+    const titleCa = editingMission.titleCa.trim()
+    const descriptionCa = editingMission.descriptionCa.trim()
 
-    if (!title || !description) {
-      setMissionError('Completa el título y la descripción.')
+    if (!title || !description || !titleCa || !descriptionCa) {
+      setMissionError(tr(
+        'Completa el título y la descripción en español y catalán.',
+        'Completa el títol i la descripció en castellà i català.',
+      ))
       return
     }
 
@@ -874,15 +953,10 @@ function App() {
       editingMission.day < 1 ||
       editingMission.day > 24
     ) {
-      setMissionError('El día debe estar entre el 1 y el 24.')
-      return
-    }
-
-    if (
-      !Number.isFinite(editingMission.durationMinutes) ||
-      editingMission.durationMinutes < 1
-    ) {
-      setMissionError('La duración debe ser de al menos un minuto.')
+      setMissionError(tr(
+        'El día debe estar entre el 1 y el 24.',
+        'El dia ha d’estar entre l’1 i el 24.',
+      ))
       return
     }
 
@@ -891,7 +965,10 @@ function App() {
 
       if (original && original.day !== editingMission.day) {
         const ok = window.confirm(
-          'Esta misión ya tiene respuestas. Cambiarla de día puede dificultar relacionar las respuestas con la misión original. ¿Quieres continuar?',
+          tr(
+            'Esta misión ya tiene respuestas. Cambiarla de día puede dificultar relacionar las respuestas con la misión original. ¿Quieres continuar?',
+            'Aquesta missió ja té respostes. Si la canvies de dia, pot ser més difícil relacionar-les amb la missió original. Vols continuar?',
+          ),
         )
         if (!ok) return
       }
@@ -902,6 +979,8 @@ function App() {
       id: editingMission.id || createMissionId(),
       title,
       description,
+      titleCa,
+      descriptionCa,
       assignedTo: [...editingMission.assignedTo],
     }
 
@@ -910,7 +989,11 @@ function App() {
         day: cleanedMission.day,
         title: cleanedMission.title,
         description: cleanedMission.description,
-        duration_minutes: cleanedMission.durationMinutes,
+        title_es: cleanedMission.title,
+        description_es: cleanedMission.description,
+        title_ca: cleanedMission.titleCa,
+        description_ca: cleanedMission.descriptionCa,
+        duration_minutes: 10,
         requires_text: cleanedMission.requiresText,
         allows_photo: cleanedMission.allowsPhoto,
         status: cleanedMission.status,
@@ -995,7 +1078,10 @@ function App() {
       setEditingMission(null)
       setEditingOriginalId(null)
       setMissionError('')
-      setNotice(`Misión del día ${savedMission.day} guardada correctamente.`)
+      setNotice(tr(
+        `Misión del día ${savedMission.day} guardada correctamente.`,
+        `Missió del dia ${savedMission.day} desada correctament.`,
+      ))
     } catch (error) {
       console.error('Error al guardar la misión:', error)
 
@@ -1004,7 +1090,10 @@ function App() {
           ? error.message
           : JSON.stringify(error)
 
-      setMissionError(`Error al guardar: ${message}`)
+      setMissionError(tr(
+        `Error al guardar: ${message}`,
+        `Error en desar: ${message}`,
+      ))
     }
   }
 
@@ -1012,8 +1101,14 @@ function App() {
     const submissionsExist = hasSubmissions(mission.id)
 
     const message = submissionsExist
-      ? `La misión «${mission.title}» del día ${mission.day} tiene respuestas asociadas. Si la eliminas, las respuestas podrían verse afectadas. ¿Eliminar de todos modos?`
-      : `¿Quieres eliminar la misión «${mission.title}» del día ${mission.day}?`
+      ? tr(
+        `La misión «${mission.title}» del día ${mission.day} tiene respuestas asociadas. Si la eliminas, las respuestas podrían verse afectadas. ¿Eliminar de todos modos?`,
+        `La missió «${mission.titleCa || mission.title}» del dia ${mission.day} té respostes associades. Si l’elimines, les respostes se’n podrien veure afectades. Vols eliminar-la igualment?`,
+      )
+      : tr(
+        `¿Quieres eliminar la misión «${mission.title}» del día ${mission.day}?`,
+        `Vols eliminar la missió «${mission.titleCa || mission.title}» del dia ${mission.day}?`,
+      )
 
     if (!window.confirm(message)) return
 
@@ -1024,7 +1119,10 @@ function App() {
 
     if (error) {
       console.error('Error al eliminar la misión:', error)
-      setNotice(`No se ha podido eliminar la misión «${mission.title}».`)
+      setNotice(tr(
+        `No se ha podido eliminar la misión «${mission.title}».`,
+        `No s’ha pogut eliminar la missió «${mission.titleCa || mission.title}».`,
+      ))
       return
     }
 
@@ -1033,7 +1131,10 @@ function App() {
     )
 
     setEditingMission(null)
-    setNotice(`Misión «${mission.title}» eliminada correctamente.`)
+    setNotice(tr(
+      `Misión «${mission.title}» eliminada correctamente.`,
+      `Missió «${mission.titleCa || mission.title}» eliminada correctament.`,
+    ))
   }
 
   if (checkingSession) {
@@ -1066,28 +1167,28 @@ function App() {
       <main className="admin-app">
         <header className="admin-header">
           <div>
-            <p className="village-eyebrow">Calendario familiar</p>
-            <h1>Panel de administración</h1>
-            <p className="village-subtitle">Gestiona las misiones y revisa las respuestas.</p>
+            <p className="village-eyebrow">{tr('Calendario familiar', 'Calendari familiar')}</p>
+            <h1>{tr('Panel de administración', 'Panell d’administració')}</h1>
+            <p className="village-subtitle">{tr('Gestiona las misiones y revisa las respuestas.', 'Gestiona les missions i revisa les respostes.')}</p>
           </div>
-          <button type="button" className="logout-button" onClick={handleLogout}>Cerrar sesión</button>
+          <button type="button" className="logout-button" onClick={handleLogout}>{tr('Cerrar sesión', 'Tanca la sessió')}</button>
         </header>
 
-        <nav className="admin-tabs" aria-label="Secciones de administración">
+        <nav className="admin-tabs" aria-label={tr('Secciones de administración', 'Seccions d’administració')}>
           <button type="button" className={adminTab === 'missions' ? 'is-active' : ''} onClick={() => { setAdminTab('missions'); setEditingMission(null) }}>
-            Gestionar misiones <span>{missions.length} misiones</span>
+            {tr('Gestionar misiones', 'Gestiona les missions')} <span>{missions.length} {tr('misiones', 'missions')}</span>
           </button>
           <button type="button" className={adminTab === 'submissions' ? 'is-active' : ''} onClick={() => { setAdminTab('submissions'); setEditingMission(null) }}>
-            Respuestas <span>{allSubmissions.length}</span>
+            {tr('Respuestas', 'Respostes')} <span>{allSubmissions.length}</span>
           </button>
         </nav>
 
-        {notice && <div className="app-notice" role="status">{notice}<button type="button" onClick={() => setNotice('')} aria-label="Cerrar aviso">×</button></div>}
+        {notice && <div className="app-notice" role="status">{notice}<button type="button" onClick={() => setNotice('')} aria-label={tr('Cerrar aviso', 'Tanca l’avís')}>×</button></div>}
 
         {adminTab === 'missions' && (
           <>
             <div className="test-calendar-panel">
-              <h3>🧪 Modo de pruebas del calendario</h3>
+              <h3>🧪 {tr('Modo de pruebas del calendario', 'Mode de proves del calendari')}</h3>
 
               <label className="test-calendar-toggle">
                 <input
@@ -1098,13 +1199,13 @@ function App() {
                     void saveCalendarSettings(event.target.checked, testDay)
                   }}
                 />
-                Activar modo de pruebas
+                {tr('Activar modo de pruebas', 'Activa el mode de proves')}
               </label>
 
               {testMode && (
                 <div className="form-field">
                   <label htmlFor="test-calendar-day">
-                    Simular día de diciembre
+                    {tr('Simular día de diciembre', 'Simula un dia de desembre')}
                   </label>
 
                   <select
@@ -1117,14 +1218,16 @@ function App() {
                   >
                     {Array.from({ length: 24 }, (_, index) => index + 1).map((day) => (
                       <option key={day} value={day}>
-                        Día {day}
+                        {tr(`Día ${day}`, `Dia ${day}`)}
                       </option>
                     ))}
                   </select>
 
                   <p>
-                    Estás simulando el día {testDay} de diciembre.
-                    Las misiones asignadas y preparadas hasta ese día deberían estar disponibles.
+                    {tr(
+                      `Estás simulando el día ${testDay} de diciembre. Las misiones asignadas y preparadas hasta ese día deberían estar disponibles.`,
+                      `Estàs simulant el dia ${testDay} de desembre. Les missions assignades i preparades fins aquell dia haurien d’estar disponibles.`,
+                    )}
                   </p>
                 </div>
               )}
@@ -1132,11 +1235,11 @@ function App() {
             <section className="mission-manager">
               <div className="manager-heading">
                 <div>
-                  <h2>Las 24 ventanas del calendario</h2>
-                  <p>Crea las misiones con antelación. Solo las marcadas como preparadas aparecerán en el calendario familiar.</p>
+                  <h2>{tr('Las 24 ventanas del calendario', 'Les 24 finestres del calendari')}</h2>
+                  <p>{tr('Crea las misiones con antelación. Solo las marcadas como preparadas aparecerán en el calendario familiar.', 'Prepara les missions amb antelació. Només les que estiguin marcades com a preparades apareixeran al calendari familiar.')}</p>
                 </div>
                 <button type="button" className="mission-action manager-new-button" onClick={() => startNewMission(1)}>
-                  + Nueva misión
+                  + {tr('Nueva misión', 'Missió nova')}
                 </button>
               </div>
 
@@ -1155,41 +1258,45 @@ function App() {
                     <article className={`mission-day-card ${dayMissions.length ? 'mission-day-card--prepared' : 'mission-day-card--empty'}`} key={day}>
                       <div className="mission-day-card__top">
                         <span className="mission-day-number">{String(day).padStart(2, '0')}</span>
-                        <span className={`mission-state-pill ${dayMissions.some((mission) => mission.status === 'prepared') ? 'is-prepared' : ''}`}>{dayMissions.length ? `${dayMissions.length} misión(es)` : 'Vacío'}</span>
+                        <span className={`mission-state-pill ${dayMissions.some((mission) => mission.status === 'prepared') ? 'is-prepared' : ''}`}>{dayMissions.length ? `${dayMissions.length} ${tr('misión(es)', 'missió/ons')}` : tr('Vacío', 'Buit')}</span>
                       </div>
                       <div className="day-preparation-status" aria-live="polite">
                         {allParticipantsPrepared ? (
-                          <span className="day-preparation-badge day-preparation-badge--complete">✓ Día completo · 4/4 preparadas</span>
+                          <span className="day-preparation-badge day-preparation-badge--complete">✓ {tr('Día completo · 4/4 preparadas', 'Dia complet · 4/4 preparades')}</span>
                         ) : preparedParticipantCount > 0 ? (
-                          <span className="day-preparation-badge">{preparedParticipantCount}/4 personas con misión preparada</span>
+                          <span className="day-preparation-badge">{tr(`${preparedParticipantCount}/4 personas con misión preparada`, `${preparedParticipantCount}/4 persones amb una missió preparada`)}</span>
                         ) : (
-                          <span className="day-preparation-badge day-preparation-badge--empty">Aún faltan misiones preparadas</span>
+                          <span className="day-preparation-badge day-preparation-badge--empty">{tr('Aún faltan misiones preparadas', 'Encara falten missions preparades')}</span>
                         )}
                       </div>
-                      {dayMissions.length === 0 && <p className="mission-day-card__description">Todavía no hay misiones para este día.</p>}
+                      {dayMissions.length === 0 && <p className="mission-day-card__description">{tr('Todavía no hay misiones para este día.', 'Encara no hi ha missions per a aquest dia.')}</p>}
                       <div className="mission-day-mission-list">
                         {dayMissions.map((mission) => (
                           <div className="mission-day-mission" key={mission.id}>
-                            <h3>{mission.title}</h3>
-                            <p className="mission-day-card__description">{mission.description}</p>
+                            <h3>{language === 'ca' && mission.titleCa.trim().length < 3
+                              ? mission.title
+                              : getMissionTitle(mission, language)}</h3>
+                            <p className="mission-day-card__description">{language === 'ca' && mission.titleCa.trim().length < 3
+                              ? mission.description
+                              : getMissionDescription(mission, language)}</p>
                             <div className="mission-day-card__meta">
-                              <span>◷ {mission.durationMinutes} min</span>
-                              <span>{mission.assignedTo.length ? mission.assignedTo.map((id) => PARTICIPANTS.find((participant) => participant.id === id)?.label ?? id).join(', ') : 'Toda la familia'}</span>
-                              <span>{mission.status === 'prepared' ? 'Preparada' : 'Borrador'}</span>
+                              <span>{mission.assignedTo.length ? mission.assignedTo.map((id) => PARTICIPANTS.find((participant) => participant.id === id)?.label ?? id).join(', ') : tr('Toda la familia', 'Tota la família')}</span>
+                              <span>{mission.status === 'prepared' ? tr('Preparada', 'Preparada') : tr('Borrador', 'Esborrany')}</span>
+                              {(!mission.titleCa || !mission.descriptionCa) && <span>{tr('Falta la traducción al catalán', 'Falta la traducció al català')}</span>}
                             </div>
                             <div className="mission-day-card__actions">
-                              <button type="button" onClick={() => startEditMission(mission)}>Editar</button>
-                              <button type="button" onClick={() => duplicateMission(mission)}>Duplicar</button>
-                              <button type="button" className="is-danger" onClick={() => deleteMission(mission)}>Eliminar</button>
+                              <button type="button" onClick={() => startEditMission(mission)}>{tr('Editar', 'Edita')}</button>
+                              <button type="button" onClick={() => duplicateMission(mission)}>{tr('Duplicar', 'Duplica')}</button>
+                              <button type="button" className="is-danger" onClick={() => deleteMission(mission)}>{tr('Eliminar', 'Elimina')}</button>
                             </div>
                           </div>
                         ))}
                       </div>
                       <div className="mission-day-card__meta">
-                        {submissionCount > 0 && <span>✉ {submissionCount} respuesta(s)</span>}
+                        {submissionCount > 0 && <span>✉ {submissionCount} {tr('respuesta(s)', 'resposta/es')}</span>}
                       </div>
                       <div className="mission-day-card__actions">
-                        <button type="button" className="is-primary" onClick={() => startNewMission(day)}>+ Añadir misión</button>
+                        <button type="button" className="is-primary" onClick={() => startNewMission(day)}>+ {tr('Añadir misión', 'Afegeix una missió')}</button>
                       </div>
                     </article>
                   )
@@ -1199,34 +1306,36 @@ function App() {
               {editingMission && (
                 <div className="mission-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { setEditingMission(null); setMissionError('') } }}>
                   <section className="mission-card mission-editor-card" role="dialog" aria-modal="true" aria-labelledby="mission-editor-title">
-                    <button type="button" className="mission-close" onClick={() => { setEditingMission(null); setMissionError('') }} aria-label="Cerrar editor">×</button>
-                    <p className="mission-day">{editingOriginalId === null ? 'NUEVA MISIÓN' : `EDITAR DÍA ${editingMission.day}`}</p>
-                    <h2 id="mission-editor-title">{editingOriginalId === null ? 'Preparar una misión' : 'Editar misión'}</h2>
+                    <button type="button" className="mission-close" onClick={() => { setEditingMission(null); setMissionError('') }} aria-label={tr('Cerrar editor', 'Tanca l’editor')}>×</button>
+                    <p className="mission-day">{editingOriginalId === null ? tr('NUEVA MISIÓN', 'MISSIÓ NOVA') : tr(`EDITAR DÍA ${editingMission.day}`, `EDITA EL DIA ${editingMission.day}`)}</p>
+                    <h2 id="mission-editor-title">{editingOriginalId === null ? tr('Preparar una misión', 'Prepara una missió') : tr('Editar misión', 'Edita la missió')}</h2>
                     <form className="mission-form mission-editor-form" onSubmit={saveMission}>
-                      <div className="editor-two-columns">
-                        <div className="form-field">
-                          <label htmlFor="mission-day-number">Día del calendario</label>
-                          <select id="mission-day-number" value={editingMission.day} onChange={(event) => setEditingMission({ ...editingMission, day: Number(event.target.value) })}>
-                            {Array.from({ length: 24 }, (_, i) => i + 1).map((day) => <option key={day} value={day}>Día {day}</option>)}
-                          </select>
-                        </div>
-                        <div className="form-field">
-                          <label htmlFor="mission-duration">Duración estimada (minutos)</label>
-                          <input id="mission-duration" type="number" min="1" max="240" value={editingMission.durationMinutes} onChange={(event) => setEditingMission({ ...editingMission, durationMinutes: Number(event.target.value) })} />
-                        </div>
+                      <div className="form-field">
+                        <label htmlFor="mission-day-number">{tr('Día del calendario', 'Dia del calendari')}</label>
+                        <select id="mission-day-number" value={editingMission.day} onChange={(event) => setEditingMission({ ...editingMission, day: Number(event.target.value) })}>
+                          {Array.from({ length: 24 }, (_, i) => i + 1).map((day) => <option key={day} value={day}>{tr(`Día ${day}`, `Dia ${day}`)}</option>)}
+                        </select>
                       </div>
                       <div className="form-field">
-                        <label htmlFor="mission-title-input">Título</label>
-                        <input id="mission-title-input" value={editingMission.title} onChange={(event) => setEditingMission({ ...editingMission, title: event.target.value })} placeholder="Ej. Un paseo especial" />
+                        <label htmlFor="mission-title-input">{tr('Título en español', 'Títol en castellà')}</label>
+                        <input id="mission-title-input" value={editingMission.title} onChange={(event) => setEditingMission({ ...editingMission, title: event.target.value })} placeholder={tr('Ej. Un paseo especial', 'Ex.: Un passeig especial')} />
                       </div>
                       <div className="form-field">
-                        <label htmlFor="mission-description-input">Descripción e instrucciones</label>
-                        <textarea id="mission-description-input" rows={4} value={editingMission.description} onChange={(event) => setEditingMission({ ...editingMission, description: event.target.value })} placeholder="Explica qué debe hacer la persona..." />
+                        <label htmlFor="mission-description-input">{tr('Descripción e instrucciones en español', 'Descripció i instruccions en castellà')}</label>
+                        <textarea id="mission-description-input" rows={4} value={editingMission.description} onChange={(event) => setEditingMission({ ...editingMission, description: event.target.value })} placeholder={tr('Explica qué debe hacer la persona...', 'Explica què ha de fer la persona...')} />
+                      </div>
+                      <div className="form-field">
+                        <label htmlFor="mission-title-ca-input">{tr('Título en catalán', 'Títol en català')}</label>
+                        <input id="mission-title-ca-input" value={editingMission.titleCa} onChange={(event) => setEditingMission({ ...editingMission, titleCa: event.target.value })} placeholder="Ex.: Una passejada especial" />
+                      </div>
+                      <div className="form-field">
+                        <label htmlFor="mission-description-ca-input">{tr('Descripción e instrucciones en catalán', 'Descripció i instruccions en català')}</label>
+                        <textarea id="mission-description-ca-input" rows={4} value={editingMission.descriptionCa} onChange={(event) => setEditingMission({ ...editingMission, descriptionCa: event.target.value })} placeholder="Explica què ha de fer la persona..." />
                       </div>
 
                       <fieldset className="editor-fieldset">
-                        <legend>¿Quién debe hacerla?</legend>
-                        <p className="editor-help">Si no marcas a nadie, la misión será para cualquier participante.</p>
+                        <legend>{tr('¿Quién debe hacerla?', 'Qui l’ha de fer?')}</legend>
+                        <p className="editor-help">{tr('Si no marcas a nadie, la misión será para cualquier participante.', 'Si no marques ningú, la missió serà per a qualsevol participant.')}</p>
                         <div className="participant-checkboxes">
                           {PARTICIPANTS.map((participant) => (
                             <label key={participant.id}>
@@ -1243,21 +1352,21 @@ function App() {
                       </fieldset>
 
                       <fieldset className="editor-fieldset">
-                        <legend>Tipo de respuesta</legend>
-                        <label className="editor-switch"><input type="checkbox" checked={editingMission.requiresText} onChange={(event) => setEditingMission({ ...editingMission, requiresText: event.target.checked })} /> Requiere respuesta escrita</label>
-                        <label className="editor-switch"><input type="checkbox" checked={editingMission.allowsPhoto} onChange={(event) => setEditingMission({ ...editingMission, allowsPhoto: event.target.checked })} /> Permite adjuntar fotografía</label>
+                        <legend>{tr('Tipo de respuesta', 'Tipus de resposta')}</legend>
+                        <label className="editor-switch"><input type="checkbox" checked={editingMission.requiresText} onChange={(event) => setEditingMission({ ...editingMission, requiresText: event.target.checked })} /> {tr('Requiere respuesta escrita', 'Requereix una resposta escrita')}</label>
+                        <label className="editor-switch"><input type="checkbox" checked={editingMission.allowsPhoto} onChange={(event) => setEditingMission({ ...editingMission, allowsPhoto: event.target.checked })} /> {tr('Permite adjuntar fotografía', 'Permet adjuntar-hi una fotografia')}</label>
                       </fieldset>
 
                       <fieldset className="editor-fieldset">
-                        <legend>Estado de la misión</legend>
-                        <label className="editor-switch"><input type="radio" name="mission-status" checked={editingMission.status === 'draft'} onChange={() => setEditingMission({ ...editingMission, status: 'draft' as MissionStatus })} /> Borrador (no visible)</label>
-                        <label className="editor-switch"><input type="radio" name="mission-status" checked={editingMission.status === 'prepared'} onChange={() => setEditingMission({ ...editingMission, status: 'prepared' as MissionStatus })} /> Preparada (visible cuando corresponda)</label>
+                        <legend>{tr('Estado de la misión', 'Estat de la missió')}</legend>
+                        <label className="editor-switch"><input type="radio" name="mission-status" checked={editingMission.status === 'draft'} onChange={() => setEditingMission({ ...editingMission, status: 'draft' as MissionStatus })} /> {tr('Borrador (no visible)', 'Esborrany (no visible)')}</label>
+                        <label className="editor-switch"><input type="radio" name="mission-status" checked={editingMission.status === 'prepared'} onChange={() => setEditingMission({ ...editingMission, status: 'prepared' as MissionStatus })} /> {tr('Preparada (visible cuando corresponda)', 'Preparada (visible quan correspongui)')}</label>
                       </fieldset>
 
                       {missionError && <p className="login-error" role="alert">{missionError}</p>}
                       <div className="editor-form-actions">
-                        <button type="button" className="editor-cancel-button" onClick={() => { setEditingMission(null); setMissionError('') }}>Cancelar</button>
-                        <button type="submit" className="mission-action">Guardar misión</button>
+                        <button type="button" className="editor-cancel-button" onClick={() => { setEditingMission(null); setMissionError('') }}>{tr('Cancelar', 'Cancel·la')}</button>
+                        <button type="submit" className="mission-action">{tr('Guardar misión', 'Desa la missió')}</button>
                       </div>
                     </form>
                   </section>
@@ -1270,17 +1379,17 @@ function App() {
         {adminTab === 'submissions' && (
           <>
             <section className="admin-summary">
-              <article><span>Respuestas recibidas</span><strong>{allSubmissions.length}</strong></article>
-              <article><span>Pendientes de revisar</span><strong>{allSubmissions.filter(([key]) => !evaluations[key]).length}</strong></article>
-              <article><span>Evaluadas</span><strong>{allSubmissions.filter(([key]) => evaluations[key]).length}</strong></article>
+                <article><span>{tr('Respuestas recibidas', 'Respostes rebudes')}</span><strong>{allSubmissions.length}</strong></article>
+                <article><span>{tr('Pendientes de revisar', 'Pendents de revisar')}</span><strong>{allSubmissions.filter(([key]) => !evaluations[key]).length}</strong></article>
+                <article><span>{tr('Evaluadas', 'Avaluades')}</span><strong>{allSubmissions.filter(([key]) => evaluations[key]).length}</strong></article>
             </section>
-            <nav className="admin-filters" aria-label="Filtrar respuestas">
-              <button type="button" className={adminFilter === 'all' ? 'is-active' : ''} onClick={() => setAdminFilter('all')}>Todas</button>
-              <button type="button" className={adminFilter === 'pending' ? 'is-active' : ''} onClick={() => setAdminFilter('pending')}>Pendientes</button>
-              <button type="button" className={adminFilter === 'evaluated' ? 'is-active' : ''} onClick={() => setAdminFilter('evaluated')}>Evaluadas</button>
+              <nav className="admin-filters" aria-label={tr('Filtrar respuestas', 'Filtra les respostes')}>
+                <button type="button" className={adminFilter === 'all' ? 'is-active' : ''} onClick={() => setAdminFilter('all')}>{tr('Todas', 'Totes')}</button>
+                <button type="button" className={adminFilter === 'pending' ? 'is-active' : ''} onClick={() => setAdminFilter('pending')}>{tr('Pendientes', 'Pendents')}</button>
+                <button type="button" className={adminFilter === 'evaluated' ? 'is-active' : ''} onClick={() => setAdminFilter('evaluated')}>{tr('Evaluadas', 'Avaluades')}</button>
             </nav>
             {filteredSubmissions.length === 0 ? (
-              <section className="admin-empty"><span aria-hidden="true">❄</span><h2>Aún no hay respuestas aquí</h2><p>Cuando alguien envíe una misión, podrás revisarla y asignarle estrellas desde esta pantalla.</p></section>
+                <section className="admin-empty"><span aria-hidden="true">❄</span><h2>{tr('Aún no hay respuestas aquí', 'Encara no hi ha respostes')}</h2><p>{tr('Cuando alguien envíe una misión, podrás revisarla y asignarle estrellas desde esta pantalla.', 'Quan algú enviï una missió, podràs revisar-la i puntuar-la des d’aquesta pantalla.')}</p></section>
             ) : (
               <section className="submission-list">
                 {filteredSubmissions.map(([key, submission]) => (
@@ -1290,6 +1399,7 @@ function App() {
                     mission={missions.find((item) => item.id === submission.missionId)}
                     evaluation={evaluations[key]}
                     onEvaluate={(stars, comment) => evaluateSubmission(key, stars, comment)}
+                    language={language}
                   />
                 ))}
               </section>
@@ -1325,41 +1435,50 @@ function App() {
     .filter((house) => house.status !== 'locked')
     .map((house) => house.day)
 
+  if (activePage === 'characters') {
+    return <Characters onBack={() => setActivePage('calendar')} username={currentUser} />
+  }
+
   return (
     <main className="village-app village-app--full-map">
       <header className="top-bar">
         <div className="brand">
           <span className="brand-icon" aria-hidden="true">🌲</span>
-          <span>Calendario de adviento</span>
+          <span>{tr('Calendario de adviento', 'Calendari d’advent')}</span>
         </div>
         <details className="account-menu">
-          <summary className="account-menu__trigger" aria-label={`Opciones de ${currentUser}`}>
+          <summary className="account-menu__trigger" aria-label={tr(`Opciones de ${currentUser}`, `Opcions de ${currentUser}`)}>
             <span className="account-menu__avatar" aria-hidden="true">👩🏻</span>
             <span>{currentUser}</span>
             <span className="account-menu__chevron" aria-hidden="true">▾</span>
           </summary>
           <div className="account-menu__dropdown">
-            <button type="button" onClick={handleLogout}>Cerrar sesión</button>
+            <button type="button" onClick={() => setActivePage('characters')}>{tr('Personajes', 'Personatges')}</button>
+            <button type="button" onClick={handleLogout}>{tr('Cerrar sesión', 'Tanca la sessió')}</button>
           </div>
         </details>
       </header>
 
-      <section className="map-container map-container--full" aria-label="Mapa del pueblo nevado">
+      <section className="map-container map-container--full" aria-label={tr('Mapa del pueblo nevado', 'Mapa del poble nevat')}>
         <div className="village-calendar-map">
           <VillageScene
             litHouses={litHouses}
             highlightedHouse={currentCalendarDay ?? undefined}
+            currentUser={currentUser ?? undefined}
           />
           {houseStates.map((house) => {
             const stateLabel = house.isCurrentDay
-              ? 'Día actual'
+              ? tr('Día actual', 'Dia actual')
               : house.status === 'locked'
-                ? 'Día futuro o bloqueado'
+                ? tr('Día futuro o bloqueado', 'Dia futur o bloquejat')
                 : house.status === 'available'
-                  ? 'Misión pendiente de enviar'
+                  ? tr('Misión pendiente de enviar', 'Missió pendent d’enviar')
                   : house.status === 'submitted'
-                    ? 'Misión enviada'
-                    : `Misión evaluada: ${house.stars} estrellas`
+                    ? tr('Misión enviada', 'Missió enviada')
+                    : tr(
+                      `Misión evaluada: ${house.stars} estrellas`,
+                      `Missió avaluada: ${house.stars} estrelles`,
+                    )
             return (
               <button
                 key={house.day}
@@ -1368,19 +1487,19 @@ function App() {
                 style={{ left: `${house.x}%`, top: `${house.y}%` }}
                 onClick={() => openMission(house.day)}
                 disabled={house.status === 'locked'}
-                aria-label={`Día ${house.day}: ${stateLabel}`}
+                aria-label={tr(`Día ${house.day}: ${stateLabel}`, `Dia ${house.day}: ${stateLabel}`)}
               >
                 {house.isCurrentDay && (
                   <span className="map-house-marker__badge map-house-marker__badge--today" aria-hidden="true">✦</span>
                 )}
                 {!house.isCurrentDay && house.status === 'available' && (
-                  <span className="map-house-marker__badge map-house-marker__badge--pending" aria-label="Misión pendiente">✦</span>
+                  <span className="map-house-marker__badge map-house-marker__badge--pending" aria-label={tr('Misión pendiente', 'Missió pendent')}>✦</span>
                 )}
                 {house.status === 'submitted' && (
-                  <span className="map-house-marker__badge map-house-marker__badge--submitted" aria-label="Misión enviada">✓</span>
+                  <span className="map-house-marker__badge map-house-marker__badge--submitted" aria-label={tr('Misión enviada', 'Missió enviada')}>✓</span>
                 )}
                 {house.status === 'evaluated' && (
-                  <span className="map-house-marker__badge map-house-marker__badge--evaluated" aria-label={`Evaluada con ${house.stars} estrellas`}>
+                  <span className="map-house-marker__badge map-house-marker__badge--evaluated" aria-label={tr(`Evaluada con ${house.stars} estrellas`, `Avaluada amb ${house.stars} estrelles`)}>
                     <span aria-hidden="true">★</span>
                     <span className="map-house-marker__score">{house.stars}</span>
                   </span>
@@ -1389,28 +1508,33 @@ function App() {
             )
           })}
         </div>
-        <div className="star-counter" aria-label="125 estrellas">
+        <div className="star-counter" aria-label={tr('125 estrellas', '125 estrelles')}>
           <span className="star-icon" aria-hidden="true">⭐</span>
           <span className="star-number">125</span>
-          <span className="star-label">estrellas</span>
+          <span className="star-label">{tr('estrellas', 'estrelles')}</span>
         </div>
       </section>
 
       {selectedMission && selectedDay !== null && (
         <div className="mission-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeMission() }}>
           <section className="mission-card" role="dialog" aria-modal="true" aria-labelledby="mission-title">
-            <button type="button" className="mission-close" onClick={closeMission} aria-label="Cerrar misión">×</button>
-            <p className="mission-day">DÍA {selectedMission.day}</p>
-            <h2 id="mission-title">{selectedMission.title}</h2>
-            <p className="mission-description">{selectedMission.description}</p>
-            <div className="mission-meta"><span>◷ {selectedMission.durationMinutes} minutos</span><span>{selectedStatus === 'evaluated' ? '✓ Evaluada' : selectedStatus === 'submitted' ? '✓ Enviada' : '✦ Tu misión'}</span></div>
-            {currentEvaluation && <div className="participant-evaluation"><p>Tu misión ha sido evaluada</p><div className="evaluation-stars" aria-label={`${currentEvaluation.stars} estrellas`}>{'★'.repeat(currentEvaluation.stars)}{'☆'.repeat(3 - currentEvaluation.stars)}</div>{currentEvaluation.comment && <p>{currentEvaluation.comment}</p>}</div>}
+            <button type="button" className="mission-close" onClick={closeMission} aria-label={tr('Cerrar misión', 'Tanca la missió')}>×</button>
+            <p className="mission-day">{tr(`DÍA ${selectedMission.day}`, `DIA ${selectedMission.day}`)}</p>
+            {language === 'ca' && (!selectedMission.titleCa || !selectedMission.descriptionCa) && (
+              <p className="mission-day-card__description" role="status">
+                Aquesta missió encara no està traduïda al català; es mostra en castellà.
+              </p>
+            )}
+            <h2 id="mission-title">{getMissionTitle(selectedMission, language)}</h2>
+            <p className="mission-description">{getMissionDescription(selectedMission, language)}</p>
+            <div className="mission-meta"><span>{selectedStatus === 'evaluated' ? tr('✓ Evaluada', '✓ Avaluada') : selectedStatus === 'submitted' ? tr('✓ Enviada', '✓ Enviada') : tr('✦ Tu misión', '✦ La teva missió')}</span></div>
+            {currentEvaluation && <div className="participant-evaluation"><p>{tr('Tu misión ha sido evaluada', 'La teva missió ha estat avaluada')}</p><div className="evaluation-stars" aria-label={tr(`${currentEvaluation.stars} estrellas`, `${currentEvaluation.stars} estrelles`)}>{'★'.repeat(currentEvaluation.stars)}{'☆'.repeat(3 - currentEvaluation.stars)}</div>{currentEvaluation.comment && <p>{currentEvaluation.comment}</p>}</div>}
             <form className="mission-form" onSubmit={handleSubmit}>
-              {currentResponse?.photo && (<div className="form-field"> <label>Fotografía enviada</label> <img className="submission-photo" src={currentResponse.photo} alt="Fotografía que enviaste para esta misión" /> </div>)}
-              {selectedMission.requiresText && <div className="form-field"><label htmlFor="mission-response">Tu respuesta</label><textarea id="mission-response" rows={4} value={responseText} onChange={(event) => setResponseText(event.target.value)} placeholder="Escribe aquí tu respuesta..." required /></div>}
-              {selectedMission.allowsPhoto && <div className="form-field"><label htmlFor="mission-photo">Añadir fotografía (opcional)</label><input id="mission-photo" type="file" accept="image/*" onChange={handlePhotoChange} />{selectedPhoto && <span className="selected-photo">Fotografía seleccionada: {selectedPhoto.name}<button type="button" onClick={() => setSelectedPhoto(null)}>Quitar</button></span>}</div>}
+              {currentResponse?.photo && (<div className="form-field"> <label>{tr('Fotografía enviada', 'Fotografia enviada')}</label> <img className="submission-photo" src={currentResponse.photo} alt={tr('Fotografía que enviaste para esta misión', 'Fotografia que has enviat per a aquesta missió')} /> </div>)}
+              {selectedMission.requiresText && <div className="form-field"><label htmlFor="mission-response">{tr('Tu respuesta', 'La teva resposta')}</label><textarea id="mission-response" rows={4} value={responseText} onChange={(event) => setResponseText(event.target.value)} placeholder={tr('Escribe aquí tu respuesta...', 'Escriu aquí la teva resposta...')} required /></div>}
+              {selectedMission.allowsPhoto && <div className="form-field"><label htmlFor="mission-photo">{tr('Añadir fotografía', 'Afegeix una fotografia')}</label><input id="mission-photo" type="file" accept="image/*" onChange={handlePhotoChange} />{selectedPhoto && <span className="selected-photo">{tr('Fotografía seleccionada:', 'Fotografia seleccionada:')} {selectedPhoto.name}<button type="button" onClick={() => setSelectedPhoto(null)}>{tr('Quitar', 'Treu')}</button></span>}</div>}
               {formError && <p className="login-error" role="alert">{formError}</p>}
-              <button type="submit" className="mission-action">{currentResponse ? 'Actualizar respuesta' : 'Enviar misión'}</button>
+              <button type="submit" className="mission-action">{currentResponse ? tr('Actualizar respuesta', 'Actualitza la resposta') : tr('Enviar misión', 'Envia la missió')}</button>
             </form>
           </section>
         </div>
@@ -1424,23 +1548,25 @@ type SubmissionCardProps = {
   mission: Mission | undefined
   evaluation: Evaluation | undefined
   onEvaluate: (stars: number, comment: string) => void
+  language: ReturnType<typeof getLanguage>
 }
 
-function SubmissionCard({ submission, mission, evaluation, onEvaluate }: SubmissionCardProps) {
+function SubmissionCard({ submission, mission, evaluation, onEvaluate, language }: SubmissionCardProps) {
   const [stars, setStars] = useState(evaluation?.stars ?? 3)
   const [comment, setComment] = useState(evaluation?.comment ?? '')
+  const tr = (spanish: string, catalan: string) => translate(language, spanish, catalan)
 
   return (
     <article className="submission-card">
-      <div className="submission-card__header"><div><p className="submission-day">DÍA {submission.day}</p><h2>{mission?.title ?? 'Misión eliminada o modificada'}</h2><p className="submission-user">Respuesta de <strong>{submission.username}</strong></p></div><span className={`submission-status ${evaluation ? 'submission-status--evaluated' : ''}`}>{evaluation ? 'Evaluada' : 'Pendiente'}</span></div>
-      {submission.text && <div className="submission-answer"><h3>Respuesta</h3><p>{submission.text}</p></div>}
-      {submission.photo && (<div className="submission-answer"> <h3>Fotografía adjunta</h3> <img className="submission-photo" src={submission.photo} alt={`Fotografía enviada por ${submission.username}`} /> </div>)}
-      <p>URL de la imagen recuperada correctamente</p>
-      <p className="submission-date">Enviada el {new Date(submission.submittedAt).toLocaleString('es-ES')}</p>
-      <div className="submission-evaluation"><h3>Asignar estrellas</h3><div className="star-picker" role="group" aria-label="Puntuación">{[1, 2, 3].map((value) => <button key={value} type="button" className={value <= stars ? 'star-picker__active' : ''} onClick={() => setStars(value)} aria-label={`${value} ${value === 1 ? 'estrella' : 'estrellas'}`} aria-pressed={stars === value}>★</button>)}</div>
-        <label className="admin-comment-label">Comentario (opcional)<textarea rows={2} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Escribe un mensaje para esta persona..." /></label>
-        <button type="button" className="mission-action" onClick={() => onEvaluate(stars, comment.trim())}>{evaluation ? 'Actualizar evaluación' : 'Guardar evaluación'}</button>
-        {evaluation && <p className="evaluation-saved">Puntuación guardada: {'★'.repeat(evaluation.stars)}{'☆'.repeat(3 - evaluation.stars)}</p>}
+      <div className="submission-card__header"><div><p className="submission-day">{tr(`DÍA ${submission.day}`, `DIA ${submission.day}`)}</p><h2>{mission ? getMissionTitle(mission, language) : tr('Misión eliminada o modificada', 'Missió eliminada o modificada')}</h2><p className="submission-user">{tr('Respuesta de', 'Resposta de')} <strong>{submission.username}</strong></p></div><span className={`submission-status ${evaluation ? 'submission-status--evaluated' : ''}`}>{evaluation ? tr('Evaluada', 'Avaluada') : tr('Pendiente', 'Pendent')}</span></div>
+      {submission.text && <div className="submission-answer"><h3>{tr('Respuesta', 'Resposta')}</h3><p>{submission.text}</p></div>}
+      {submission.photo && (<div className="submission-answer"> <h3>{tr('Fotografía adjunta', 'Fotografia adjunta')}</h3> <img className="submission-photo" src={submission.photo} alt={tr(`Fotografía enviada por ${submission.username}`, `Fotografia enviada per ${submission.username}`)} /> </div>)}
+      <p>{tr('URL de la imagen recuperada correctamente', 'URL de la imatge recuperada correctament')}</p>
+      <p className="submission-date">{tr('Enviada el', 'Enviada el')} {new Date(submission.submittedAt).toLocaleString(language === 'ca' ? 'ca-ES' : 'es-ES')}</p>
+      <div className="submission-evaluation"><h3>{tr('Asignar estrellas', 'Assigna estrelles')}</h3><div className="star-picker" role="group" aria-label={tr('Puntuación', 'Puntuació')}>{[1, 2, 3].map((value) => <button key={value} type="button" className={value <= stars ? 'star-picker__active' : ''} onClick={() => setStars(value)} aria-label={`${value} ${value === 1 ? tr('estrella', 'estrella') : tr('estrellas', 'estrelles')}`} aria-pressed={stars === value}>★</button>)}</div>
+        <label className="admin-comment-label">{tr('Comentario (opcional)', 'Comentari (opcional)')}<textarea rows={2} value={comment} onChange={(event) => setComment(event.target.value)} placeholder={tr('Escribe un mensaje para esta persona...', 'Escriu un missatge per a aquesta persona...')} /></label>
+        <button type="button" className="mission-action" onClick={() => onEvaluate(stars, comment.trim())}>{evaluation ? tr('Actualizar evaluación', 'Actualitza l’avaluació') : tr('Guardar evaluación', 'Desa l’avaluació')}</button>
+        {evaluation && <p className="evaluation-saved">{tr('Puntuación guardada:', 'Puntuació desada:')} {'★'.repeat(evaluation.stars)}{'☆'.repeat(3 - evaluation.stars)}</p>}
       </div>
     </article>
   )

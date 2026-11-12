@@ -5,8 +5,8 @@ import { createRef, useCallback, useEffect, useMemo, useRef, useState } from "re
 import type { RefObject } from "react";
 import { Box3, Material, Mesh, OrthographicCamera, Vector3, type Group } from "three";
 import { EDGES } from "./data/pathGraph";
-import { CHARACTER_SIZE_MULTIPLIER, MAP_H, MAP_W } from "./constants";
-import type { VillageCharacterData } from "./data/characters";
+import { MAP_H, MAP_W } from "./constants";
+import { CHARACTER_DISPLAY_SIZE, type VillageCharacterData } from "./data/characters";
 import type { BenchSpot } from "./data/spots";
 import type { Pt } from "./utils/geometry";
 import { Walking } from "./movement/Walking";
@@ -14,13 +14,12 @@ import { Sit, type SitPose } from "./movement/Sit";
 import { Skate } from "./movement/Skate";
 import { closestPointOnEdge } from "./utils/geometry";
 import { isBenchOccupied, releaseBench, reserveBench } from "./interactions/benchReservations";
+import { translate, type Language } from "../../i18n";
 
 const PIXELS_PER_WORLD_UNIT = 25;
 const CAMERA_HEIGHT = 40;
 const CAMERA_DEPTH = 40;
 const CAMERA_ELEVATION_SIN = CAMERA_HEIGHT / Math.hypot(CAMERA_HEIGHT, CAMERA_DEPTH);
-const CHARACTER_SCALE = 0.92 * 1.2;
-const CHARACTER_HEIGHT = 23;
 const SIT_CHANCE = 0.35;
 const BENCH_INTERACTION_RADIUS = 4;
 const BENCH_EXIT_RADIUS = 8;
@@ -198,7 +197,7 @@ function CharacterModel({
     return () => {
       walk.fadeOut(0.2);
     };
-  }, [actions, character.modelPath, isSitting, isSkating, sitAction, walkAnimation]);
+  }, [actions, character.modelPath, isSitting, isSkating, walkAnimation]);
 
   useEffect(() => {
     applySkateAppearance(skateMaterialOverrides, isSkating);
@@ -222,7 +221,7 @@ function CharacterModel({
     const scaledGroup = modelPosition.current;
     if (!group || !scaledGroup || canvasHeight === 0 || !(camera instanceof OrthographicCamera)) return;
 
-    const baseScale = mapScale * CHARACTER_SCALE * (character.modelScale ?? 1);
+    const baseScale = mapScale * CHARACTER_DISPLAY_SIZE.sceneScale;
     scaledGroup.scale.setScalar(baseScale);
     group.updateWorldMatrix(true, true);
     camera.updateMatrixWorld();
@@ -242,13 +241,14 @@ function CharacterModel({
     }
 
     const renderedHeight = ((maxY - minY) / 2) * canvasHeight;
-    const targetHeight = sitAction
-      ? (canvasHeight / MAP_H) * CHARACTER_HEIGHT * CHARACTER_SIZE_MULTIPLIER
-      : 0;
+    const targetHeight = (canvasHeight / MAP_H)
+      * CHARACTER_DISPLAY_SIZE.mapHeight
+      * CHARACTER_DISPLAY_SIZE.multiplier
+      * character.displayScale;
     if (renderedHeight > 0 && targetHeight > 0) {
       scaledGroup.scale.setScalar(baseScale * targetHeight / renderedHeight);
     }
-  }, [camera, canvasHeight, character.modelScale, heading, mapScale, model, modelPosition, sitAction]);
+  }, [camera, canvasHeight, character.displayScale, heading, mapScale, model, modelPosition]);
 
   return (
     <>
@@ -257,7 +257,7 @@ function CharacterModel({
         position={sittingSpot
           ? mapPointToWorld({ x: sittingSpot[0], y: sittingSpot[1] + BENCH_SEAT_Y_OFFSET }, mapScale)
           : undefined}
-        scale={mapScale * CHARACTER_SCALE * (character.modelScale ?? 1)}
+        scale={mapScale * CHARACTER_DISPLAY_SIZE.sceneScale}
       >
         <group ref={heading} rotation={sittingSpot ? [0, sittingSpot[2], 0] : undefined}>
           <primitive ref={characterGroup} object={model} />
@@ -337,11 +337,13 @@ function getBenchTargets(benches: readonly BenchSpot[]): BenchTarget[] {
 function CharacterWalker({
   character,
   refs,
+  language,
   onSittingChange,
   onSkatingChange,
 }: {
   character: VillageCharacterData;
   refs: CharacterRefs;
+  language: Language;
   onSittingChange: (characterId: string, spot: BenchSpot | null) => void;
   onSkatingChange: (characterId: string, skating: boolean) => void;
 }) {
@@ -421,7 +423,11 @@ function CharacterWalker({
         className="walking-character"
         ref={position}
         role="img"
-        aria-label={`${character.name} caminant pel poble`}
+        aria-label={translate(
+          language,
+          `${character.name} caminando por el pueblo`,
+          `${character.name} caminant pel poble`,
+        )}
         title={character.name}
       >
         <span
@@ -442,7 +448,13 @@ function CharacterWalker({
   );
 }
 
-export function VillageCharacters({ characters }: { characters: VillageCharacterData[] }) {
+export function VillageCharacters({
+  characters,
+  language,
+}: {
+  characters: VillageCharacterData[];
+  language: Language;
+}) {
   const refs = useMemo(
     () => characters.map(() => ({
       heading: createRef<Group>(),
@@ -473,7 +485,11 @@ export function VillageCharacters({ characters }: { characters: VillageCharacter
   return (
     <div
       style={{ position: "absolute", inset: 0, zIndex: 2, pointerEvents: "none" }}
-      aria-label="Personatges caminant pel poble"
+      aria-label={translate(
+        language,
+        "Personajes caminando por el pueblo",
+        "Personatges caminant pel poble",
+      )}
     >
       <Canvas
         orthographic
@@ -507,6 +523,7 @@ export function VillageCharacters({ characters }: { characters: VillageCharacter
                 key={character.id}
                 character={character}
                 refs={characterRefs}
+                language={language}
                 onSittingChange={handleSittingChange}
                 onSkatingChange={handleSkatingChange}
               />

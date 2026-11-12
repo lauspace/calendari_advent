@@ -5,14 +5,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { Box3, OrthographicCamera as ThreeOrthographicCamera, Vector3, type Group } from "three";
 import { EDGES } from "./data/pathGraph";
-import { CHARACTER_SIZE_MULTIPLIER, MAP_H, MAP_W } from "./constants";
+import { MAP_H, MAP_W } from "./constants";
+import { CHARACTER_DISPLAY_SIZE } from "./data/characters";
 import type { BenchSpot } from "./data/spots";
 import { Walking } from "./movement/Walking";
 import { Sit, type SitPose } from "./movement/Sit";
 import { closestPointOnEdge, type Pt } from "./utils/geometry";
 import { isBenchOccupied, releaseBench, reserveBench } from "./interactions/benchReservations";
 
-const CHARACTER_HEIGHT = 23;
 const DEFAULT_SIT_POSE: SitPose = {};
 const SIT_CHANCE = 0.35;
 const BENCH_INTERACTION_RADIUS = 4;
@@ -111,7 +111,9 @@ function CharacterModel({
     }
 
     const renderedHeight = ((maxY - minY) / 2) * canvasHeight;
-    const targetHeight = (mapHeight / MAP_H) * CHARACTER_HEIGHT * CHARACTER_SIZE_MULTIPLIER;
+    const targetHeight = (mapHeight / MAP_H)
+      * CHARACTER_DISPLAY_SIZE.mapHeight
+      * CHARACTER_DISPLAY_SIZE.multiplier;
     if (renderedHeight > 0 && targetHeight > 0) {
       onCameraZoomChange(cameraZoom * (targetHeight / renderedHeight));
     }
@@ -133,7 +135,7 @@ export function VillageCharacter({
   walkAnimation,
   benches,
   sitPose = DEFAULT_SIT_POSE,
-  scale = 3.5,
+  scale = CHARACTER_DISPLAY_SIZE.standaloneScale,
 }: VillageCharacterProps) {
   const position = useRef<HTMLDivElement>(null);
   const heading = useRef<Group>(null);

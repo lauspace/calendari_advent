@@ -11,7 +11,7 @@ export interface PathEdge {
   a: string;
   b: string;
   /** Punto de control opcional (curva Bézier cuadrática) */
-  c?: [number, number];
+  c?: readonly [number, number];
 }
 
 const n = (id: string, x: number, y: number, kind: NodeKind): PathNode => ({ id, x, y, kind });
@@ -56,13 +56,19 @@ const JUNCTIONS: PathNode[] = [
   n("j13", 410, 612, "junction"),
   n("j14", 610, 622, "junction"),
   n("j15", 190, 652, "junction"),
-  n("bW", 140, 490, "bridge"), // extremo oeste del puente
+  n("bW", 158, 490, "bridge"), // extremo oeste del puente
   n("bE", 252, 490, "bridge"), // extremo este del puente
 ];
 
 export const NODES: Record<string, PathNode> = Object.fromEntries(
   [...DOORS, ...JUNCTIONS].map((p) => [p.id, p])
 );
+
+export const BRIDGE = {
+  from: "bW",
+  to: "bE",
+  control: [(NODES.bW.x + NODES.bE.x) / 2, NODES.bW.y - 18] as const,
+};
 
 export const EDGES: PathEdge[] = [
   // fila superior
@@ -97,9 +103,8 @@ export const EDGES: PathEdge[] = [
   { a: "j9", b: "h15", c: [715, 520] },
   { a: "j12", b: "h14", c: [510, 535] },
   // puente y orilla del estanque
-  { a: "j7", b: "bW", c: [165, 460] },
   { a: "j11", b: "bW", c: [115, 505] },
-  { a: "bW", b: "bE" },
+  { a: "bW", b: "bE", c: BRIDGE.control },
   { a: "bE", b: "j10", c: [270, 480] },
   { a: "j10", b: "h10", c: [295, 455] },
   { a: "j10", b: "h13", c: [335, 500] },
@@ -115,7 +120,3 @@ export const EDGES: PathEdge[] = [
   { a: "j14", b: "h19", c: [650, 625] },
   { a: "h15", b: "h19", c: [735, 610] },
 ];
-
-
-/** Nodos extremos del puente (los dos lados del estanque) */
-export const BRIDGE = { from: "bW", to: "bE" } as const;

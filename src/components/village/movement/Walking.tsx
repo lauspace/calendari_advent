@@ -1,18 +1,26 @@
 import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import type { Group } from "three";
-import { EDGES, NODES, type PathEdge } from "../data/pathGraph";
-import { edgeLength, pointOnEdge, type Pt } from "../utils/geometry";
+import { BRIDGE, EDGES, NODES, type PathEdge } from "../data/pathGraph";
+import { closestPointOnEdge, edgeLength, pointOnEdge, type Pt } from "../utils/geometry";
 import { MAP_H, MAP_W } from "../constants";
 
 const WALK_SPEED = 20;
 const SKATE_CHANCE = 0.5;
-const SKATE_BRIDGE = { start: { x: 140, y: 490 }, end: { x: 252, y: 490 } };
+const SKATE_BRIDGE_EDGE = EDGES.find((edge) =>
+  (edge.a === BRIDGE.from && edge.b === BRIDGE.to) ||
+  (edge.a === BRIDGE.to && edge.b === BRIDGE.from),
+);
 const SKATE_TRIGGER_DISTANCE = 12;
 const SKATE_TRIGGER_RESET_DISTANCE = 32;
 const JUNCTION_IDS = Object.values(NODES)
   .filter((node) => node.kind === "junction")
   .map((node) => node.id);
+
+if (!SKATE_BRIDGE_EDGE) {
+  throw new Error("Cannot locate the bridge path for the skating interaction.");
+}
+const bridgeSkateEdge = SKATE_BRIDGE_EDGE;
 
 export interface WalkingProps {
   position: RefObject<HTMLDivElement | null>;
@@ -260,15 +268,10 @@ export function Walking({
         }
 
         if (skateDurationSeconds && !wasSkating) {
-          const bridgeDx = SKATE_BRIDGE.end.x - SKATE_BRIDGE.start.x;
-          const bridgeDy = SKATE_BRIDGE.end.y - SKATE_BRIDGE.start.y;
-          const projection = Math.max(0, Math.min(1, (
-            (point.x - SKATE_BRIDGE.start.x) * bridgeDx +
-            (point.y - SKATE_BRIDGE.start.y) * bridgeDy
-          ) / (bridgeDx * bridgeDx + bridgeDy * bridgeDy)));
+          const closestBridgePoint = closestPointOnEdge(bridgeSkateEdge, point);
           const bridgeDistance = Math.hypot(
-            point.x - (SKATE_BRIDGE.start.x + projection * bridgeDx),
-            point.y - (SKATE_BRIDGE.start.y + projection * bridgeDy),
+            point.x - closestBridgePoint.x,
+            point.y - closestBridgePoint.y,
           );
 
           if (bridgeDistance > SKATE_TRIGGER_RESET_DISTANCE) {

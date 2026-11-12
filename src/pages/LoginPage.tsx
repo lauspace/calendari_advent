@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import Button from '../components/ui/Button'
+import { getLanguage, translate } from '../i18n'
 
 type LoginPageProps = {
 onLogin: (username: string, password: string) => Promise<void>
@@ -10,6 +11,8 @@ const [username, setUsername] = useState('')
 const [password, setPassword] = useState('')
 const [error, setError] = useState('')
 const [loading, setLoading] = useState(false)
+const language = getLanguage(username)
+const tr = (spanish: string, catalan: string) => translate(language, spanish, catalan)
 
 async function handleSubmit(event: FormEvent<HTMLFormElement>) {
 event.preventDefault()
@@ -17,7 +20,7 @@ event.preventDefault()
 const normalizedUsername = username.trim()
 
 if (!normalizedUsername || !password) {
-  setError('Introduce tu usuario y contraseña.')
+  setError(tr('Introduce tu usuario y contraseña.', 'Introdueix el teu nom d’usuari i la contrasenya.'))
   return
 }
 
@@ -30,7 +33,10 @@ try {
   setError(
     err instanceof Error
       ? err.message
-      : 'No se ha podido iniciar sesión. Comprueba tus datos e inténtalo de nuevo.',
+      : tr(
+        'No se ha podido iniciar sesión. Comprueba tus datos e inténtalo de nuevo.',
+        'No s’ha pogut iniciar la sessió. Comprova les dades i torna-ho a provar.',
+      ),
   )
 } finally {
   setLoading(false)
@@ -39,17 +45,17 @@ try {
 }
 
 return ( <main className="app"> <section className="welcome-card login-card"> <p className="welcome-card__eyebrow">
-Una Navidad para compartir </p>
+{tr('Una Navidad para compartir', 'Un Nadal per compartir')} </p>
 
-    <h1>Calendario de Adviento</h1>
+    <h1>{tr('Calendario de Adviento', 'Calendari d’Advent')}</h1>
 
     <p className="welcome-card__description">
-      24 días de pequeños retos, recuerdos y sorpresas en familia.
+      {tr('24 días de pequeños retos, recuerdos y sorpresas en familia.', '24 dies de petits reptes, records i sorpreses en família.')}
     </p>
 
     <form className="login-form" onSubmit={handleSubmit}>
       <div className="form-field">
-        <label htmlFor="username">Usuario</label>
+        <label htmlFor="username">{tr('Usuario', 'Nom d’usuari')}</label>
         <input
           id="username"
           name="username"
@@ -63,7 +69,7 @@ Una Navidad para compartir </p>
       </div>
 
       <div className="form-field">
-        <label htmlFor="password">Contraseña</label>
+        <label htmlFor="password">{tr('Contraseña', 'Contrasenya')}</label>
         <input
           id="password"
           name="password"
@@ -83,7 +89,7 @@ Una Navidad para compartir </p>
       )}
 
       <Button type="submit" className="login-submit" disabled={loading}>
-        {loading ? 'Entrando…' : 'Entrar'}
+        {loading ? tr('Entrando…', 'Entrant…') : tr('Entrar', 'Entra')}
       </Button>
     </form>
   </section>

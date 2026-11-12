@@ -1,5 +1,16 @@
 # React + TypeScript + Vite
 
+## Languages and missions
+
+Jordi and Caty use Spanish; Albert, Ana, and the admin user use Catalan. The
+language is selected from the authenticated profile's username. Mission titles
+and descriptions are stored in both languages in Supabase.
+
+Apply `supabase/migrations/20261111_bilingual_missions.sql` before deploying the
+updated app. This migration only adds bilingual text columns; it does not add
+or edit any missions. Create missions from the admin panel, providing both
+language versions before saving.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:
