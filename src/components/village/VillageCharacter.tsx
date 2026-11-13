@@ -7,6 +7,7 @@ import { Box3, OrthographicCamera as ThreeOrthographicCamera, Vector3, type Grou
 import { EDGES } from "./data/pathGraph";
 import { MAP_H, MAP_W } from "./constants";
 import { CHARACTER_DISPLAY_SIZE } from "./data/characters";
+import { assetUrl } from "../../lib/assetUrl";
 import type { BenchSpot } from "./data/spots";
 import { Walking } from "./movement/Walking";
 import { Sit, type SitPose } from "./movement/Sit";
@@ -67,7 +68,7 @@ function CharacterModel({
   sitPose: SitPose;
   scale: number;
 }) {
-  const { scene, animations } = useGLTF(modelPath);
+  const { scene, animations } = useGLTF(assetUrl(modelPath));
   const model = useMemo(() => clone(scene), [scene]);
   const { actions } = useAnimations(animations, heading);
   const camera = useThree((state) => state.camera);

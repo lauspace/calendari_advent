@@ -7,6 +7,9 @@ import { BENCH_SPOTS, HOUSE_SPOTS } from "../data/spots";
 import type { BenchSpot } from "../data/spots";
 import { House3D } from "./Houses3D";
 import { variantForDay } from "./houses";
+import { assetUrl } from "../../../lib/assetUrl";
+
+const BENCH_MODEL_URL = assetUrl("/models/objects/bench.glb");
 
 const PIXELS_PER_WORLD_UNIT = 25;
 const CAMERA_HEIGHT = 40;
@@ -17,7 +20,7 @@ const BENCH_MODEL_SCALE = 7 * 2.6 / PIXELS_PER_WORLD_UNIT;
 
 function BenchModel({ spot }: { spot: BenchSpot }) {
   const scale = useThree(({ size }) => size.width / MAP_W);
-  const { scene } = useGLTF("/models/objects/bench.glb");
+  const { scene } = useGLTF(BENCH_MODEL_URL);
   const model = useMemo(() => clone(scene), [scene]);
   const [x, y, rotation] = spot;
   const position: [number, number, number] = [
@@ -110,4 +113,4 @@ export function House3DMap({
   );
 }
 
-useGLTF.preload("/models/objects/bench.glb");
+useGLTF.preload(BENCH_MODEL_URL);

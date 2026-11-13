@@ -16,6 +16,7 @@ import {
 import { Box3, Vector3, type Group } from "three";
 import { getCharactersForUser } from "../village/data/characters";
 import { translate, type Language } from "../../i18n";
+import { assetUrl } from "../../lib/assetUrl";
 
 function useNearViewport(ref: RefObject<HTMLElement | null>): boolean {
   const [isNearViewport, setIsNearViewport] = useState(
@@ -54,7 +55,7 @@ function CharacterModel({
   onLoad: () => void;
   rotation: RefObject<Group | null>;
 }) {
-  const { scene } = useGLTF(modelPath);
+  const { scene } = useGLTF(assetUrl(modelPath));
   const model = useMemo(() => clone(scene), [scene]);
   const bounds = useMemo(() => new Box3().setFromObject(model), [model]);
   const size = useMemo(() => bounds.getSize(new Vector3()), [bounds]);

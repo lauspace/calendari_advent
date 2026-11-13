@@ -1488,23 +1488,7 @@ function App() {
                 onClick={() => openMission(house.day)}
                 disabled={house.status === 'locked'}
                 aria-label={tr(`Día ${house.day}: ${stateLabel}`, `Dia ${house.day}: ${stateLabel}`)}
-              >
-                {house.isCurrentDay && (
-                  <span className="map-house-marker__badge map-house-marker__badge--today" aria-hidden="true">✦</span>
-                )}
-                {!house.isCurrentDay && house.status === 'available' && (
-                  <span className="map-house-marker__badge map-house-marker__badge--pending" aria-label={tr('Misión pendiente', 'Missió pendent')}>✦</span>
-                )}
-                {house.status === 'submitted' && (
-                  <span className="map-house-marker__badge map-house-marker__badge--submitted" aria-label={tr('Misión enviada', 'Missió enviada')}>✓</span>
-                )}
-                {house.status === 'evaluated' && (
-                  <span className="map-house-marker__badge map-house-marker__badge--evaluated" aria-label={tr(`Evaluada con ${house.stars} estrellas`, `Avaluada amb ${house.stars} estrelles`)}>
-                    <span aria-hidden="true">★</span>
-                    <span className="map-house-marker__score">{house.stars}</span>
-                  </span>
-                )}
-              </button>
+              />
             )
           })}
         </div>

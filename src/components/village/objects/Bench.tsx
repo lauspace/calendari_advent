@@ -4,10 +4,13 @@ import { clone } from "three/addons/utils/SkeletonUtils.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { BenchSpot } from "../data/spots";
 import { MAP_H, MAP_W } from "../constants";
+import { assetUrl } from "../../../lib/assetUrl";
+
+const BENCH_MODEL_URL = assetUrl("/models/objects/bench.glb");
 
 export function Bench({ spot }: { spot: BenchSpot }) {
   const [x, y, rotation, scale] = spot;
-  const { scene } = useGLTF("/models/objects/bench.glb");
+  const { scene } = useGLTF(BENCH_MODEL_URL);
   const model = useMemo(() => clone(scene), [scene]);
   const container = useRef<HTMLDivElement>(null);
   const [mapHeight, setMapHeight] = useState(MAP_H);
@@ -46,4 +49,4 @@ export function Bench({ spot }: { spot: BenchSpot }) {
   );
 }
 
-useGLTF.preload("/models/objects/bench.glb");
+useGLTF.preload(BENCH_MODEL_URL);

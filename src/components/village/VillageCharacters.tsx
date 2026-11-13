@@ -14,6 +14,7 @@ import { Sit, type SitPose } from "./movement/Sit";
 import { Skate } from "./movement/Skate";
 import { closestPointOnEdge } from "./utils/geometry";
 import { isBenchOccupied, releaseBench, reserveBench } from "./interactions/benchReservations";
+import { assetUrl } from "../../lib/assetUrl";
 import { translate, type Language } from "../../i18n";
 
 const PIXELS_PER_WORLD_UNIT = 25;
@@ -136,7 +137,7 @@ function CharacterModel({
   mapScale: number;
 }) {
   const { heading, modelPosition, character: characterGroup } = refs;
-  const { scene, animations } = useGLTF(character.modelPath);
+  const { scene, animations } = useGLTF(assetUrl(character.modelPath));
   const model = useMemo(() => clone(scene), [scene]);
   const { actions } = useAnimations(animations, heading);
   const camera = useThree((state) => state.camera);

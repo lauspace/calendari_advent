@@ -11,6 +11,29 @@ updated app. This migration only adds bilingual text columns; it does not add
 or edit any missions. Create missions from the admin panel, providing both
 language versions before saving.
 
+## Publicar a GitHub Pages
+
+El lloc es compila i es publica automàticament a
+`https://lauspace.github.io/calendari_advent/` quan s’envien canvis a `main`.
+
+1. Fes públic el repositori `lauspace/calendari_advent`. A **Settings → Pages**,
+   selecciona **GitHub Actions** com a origen de publicació.
+2. A **Settings → Secrets and variables → Actions**, afegeix aquests secrets
+   del repositori:
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_PUBLISHABLE_KEY`
+3. Envia els canvis a `main` o executa **Deploy to GitHub Pages** des de la
+   pestanya **Actions**. En acabar, l’execució mostrarà l’URL publicada.
+4. A la configuració d’autenticació de Supabase, afegeix
+   `https://lauspace.github.io/calendari_advent/` a les URL permeses del lloc i
+   de redirecció perquè els usuaris puguin iniciar sessió.
+
+La clau publicable de Supabase s’inclou al paquet públic del navegador per
+disseny. No posis mai una clau secreta `service_role` al frontend; protegeix
+l’accés a la base de dades amb les polítiques Row Level Security adequades. Per
+al desenvolupament local, copia `.env.example` a `.env.local` i introdueix-hi
+els mateixos valors de Supabase.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:
