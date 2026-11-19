@@ -105,11 +105,31 @@ export function House3DMap({
       aria-hidden="true"
       style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none" }}
     >
-      <ambientLight intensity={0.9} color="#dbe7f5" />
+      <House3DScene
+        litHouses={litHouses}
+        highlightedHouse={highlightedHouse}
+        showHouses={showHouses}
+      />
+    </Canvas>
+  );
+}
+
+export function House3DScene({
+  litHouses,
+  highlightedHouse,
+  showHouses = true,
+}: {
+  litHouses?: number[];
+  highlightedHouse?: number;
+  showHouses?: boolean;
+}) {
+  return (
+    <>
+      <ambientLight intensity={1.4} color="#dbe7f5" />
       <directionalLight position={[-6, 12, 8]} intensity={2.2} />
       {showHouses && <Houses litHouses={litHouses} highlightedHouse={highlightedHouse} />}
       <Benches />
-    </Canvas>
+    </>
   );
 }
 

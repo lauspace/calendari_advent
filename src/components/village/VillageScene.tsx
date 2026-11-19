@@ -2,22 +2,20 @@
  * AdventMap — ensambla la escena completa.
  * Orden de capas (de atrás hacia delante):
  *   suelo → claros → estanque → caminos → puente → viñeta →
- *   objetos (casas + pinos ordenados por y) → children → debug
+ *   objetos 2D → children → debug, con casas, pinos y personajes ordenados en 3D
  * --------------------------------------------------------------- */
 import type { ReactNode } from "react";
 import { MAP_H, MAP_W } from "./constants";
-import { TREE_SPOTS } from "./data/spots";
 import { Bridge, BridgeForeground } from "./decor/Bridge";
 import { DebugOverlay } from "./utils/DebugOverlay";
 import { HouseClearings } from "./buildings/HouseClearings";
-import { House3DMap } from "./buildings/House3DMap";
 import { MapDefs } from "./utils/MapDefs";
 import { Paths } from "./terrain/Paths";
 import { Pond } from "./nature/Pond";
 import { SnowGround } from "./terrain/SnowGround";
-import { Tree } from "./nature/Tree";
 import { Vignette } from "./utils/Vignette";
-import { VillageCharacterLayer } from "./VillageCharacterLayer";
+import { Village3DScene } from "./Village3DScene";
+import { VillageCharacters } from "./VillageCharacters";
 import { getCharactersForUser } from "./data/characters";
 import { getLanguage, translate } from "../../i18n";
 
@@ -50,7 +48,6 @@ export default function AdventMap({
   children,
 }: AdventMapProps) {
   const language = getLanguage(currentUser);
-  const trees = TREE_SPOTS.map(([x, y, s], i) => <Tree key={`t${i}`} x={x} y={y} s={s} />);
 
   return (
     <div className="village-map">
@@ -72,13 +69,23 @@ export default function AdventMap({
         <Paths />
         {showBridge && <Bridge />}
         <Vignette />
-        {showPlaceholders && <g>{trees}</g>}
         {children}
         {debug && <DebugOverlay />}
       </svg>
-      <VillageCharacterLayer
+      <VillageCharacters
         characters={getCharactersForUser(currentUser)}
         language={language}
+        renderScene={(characterModels, characterOverlay) => (
+          <>
+            <Village3DScene
+              showPlaceholders={showPlaceholders}
+              litHouses={litHouses}
+              highlightedHouse={highlightedHouse}
+              characterModels={characterModels}
+            />
+            {characterOverlay}
+          </>
+        )}
       />
       {showBridge && (
         <svg
@@ -89,11 +96,6 @@ export default function AdventMap({
           <BridgeForeground />
         </svg>
       )}
-      <House3DMap
-        litHouses={litHouses}
-        highlightedHouse={highlightedHouse}
-        showHouses={showPlaceholders}
-      />
     </div>
   );
 }

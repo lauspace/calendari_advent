@@ -1,8 +1,8 @@
-import { Canvas, useThree } from "@react-three/fiber";
+import { useThree } from "@react-three/fiber";
 import { useAnimations, useGLTF } from "@react-three/drei";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
 import { createRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { Box3, Material, Mesh, OrthographicCamera, Vector3, type Group } from "three";
 import { EDGES } from "./data/pathGraph";
 import { MAP_H, MAP_W } from "./constants";
@@ -22,9 +22,10 @@ const CAMERA_HEIGHT = 40;
 const CAMERA_DEPTH = 40;
 const CAMERA_ELEVATION_SIN = CAMERA_HEIGHT / Math.hypot(CAMERA_HEIGHT, CAMERA_DEPTH);
 const SIT_CHANCE = 0.35;
-const BENCH_INTERACTION_RADIUS = 4;
+const BENCH_INTERACTION_RADIUS = 24;
 const BENCH_EXIT_RADIUS = 8;
 const BENCH_SEAT_Y_OFFSET = -5;
+const SITTING_DEPTH_OFFSET = 0.5;
 const SIT_DURATION_MIN = 3000;
 const SIT_DURATION_RANGE = 4000;
 const SIT_COOLDOWN = 15000;
@@ -113,11 +114,15 @@ function distanceToSegment(point: Pt, start: Pt, end: Pt): number {
   );
 }
 
-function mapPointToWorld(point: Pt, mapScale: number): [number, number, number] {
+function mapPointToWorld(
+  point: Pt,
+  mapScale: number,
+  depthOffset = 0,
+): [number, number, number] {
   return [
     ((point.x - MAP_W / 2) / PIXELS_PER_WORLD_UNIT) * mapScale,
-    0,
-    ((point.y - MAP_H / 2) / (PIXELS_PER_WORLD_UNIT * CAMERA_ELEVATION_SIN)) * mapScale,
+    depthOffset * mapScale,
+    (((point.y - MAP_H / 2) / (PIXELS_PER_WORLD_UNIT * CAMERA_ELEVATION_SIN)) + depthOffset) * mapScale,
   ];
 }
 
@@ -256,7 +261,11 @@ function CharacterModel({
       <group
         ref={modelPosition}
         position={sittingSpot
-          ? mapPointToWorld({ x: sittingSpot[0], y: sittingSpot[1] + BENCH_SEAT_Y_OFFSET }, mapScale)
+          ? mapPointToWorld(
+            { x: sittingSpot[0], y: sittingSpot[1] + BENCH_SEAT_Y_OFFSET },
+            mapScale,
+            SITTING_DEPTH_OFFSET,
+          )
           : undefined}
         scale={mapScale * CHARACTER_DISPLAY_SIZE.sceneScale}
       >
@@ -452,9 +461,11 @@ function CharacterWalker({
 export function VillageCharacters({
   characters,
   language,
+  renderScene,
 }: {
   characters: VillageCharacterData[];
   language: Language;
+  renderScene: (models: ReactNode, overlay: ReactNode) => ReactNode;
 }) {
   const refs = useMemo(
     () => characters.map(() => ({
@@ -483,7 +494,15 @@ export function VillageCharacters({
     });
   }, []);
 
-  return (
+  const models = (
+    <CharacterModels
+      characters={characters}
+      refs={refs}
+      sittingSpots={sittingSpots}
+      skatingCharacters={skatingCharacters}
+    />
+  );
+  const overlay = (
     <div
       style={{ position: "absolute", inset: 0, zIndex: 2, pointerEvents: "none" }}
       aria-label={translate(
@@ -492,29 +511,6 @@ export function VillageCharacters({
         "Personatges caminant pel poble",
       )}
     >
-      <Canvas
-        orthographic
-        camera={{
-          position: [0, CAMERA_HEIGHT, CAMERA_DEPTH],
-          rotation: [-Math.PI / 4, 0, 0],
-          zoom: PIXELS_PER_WORLD_UNIT,
-          near: 0.1,
-          far: 200,
-        }}
-        dpr={[1, 2]}
-        gl={{ alpha: true, antialias: true }}
-        aria-hidden="true"
-        style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
-      >
-        <ambientLight intensity={2} />
-        <directionalLight position={[3, 5, 4]} intensity={2.5} />
-        <CharacterModels
-          characters={characters}
-          refs={refs}
-          sittingSpots={sittingSpots}
-          skatingCharacters={skatingCharacters}
-        />
-      </Canvas>
       <div style={{ position: "absolute", inset: 0 }}>
         {characters.map((character, index) => {
           const characterRefs = refs[index];
@@ -534,4 +530,5 @@ export function VillageCharacters({
       </div>
     </div>
   );
+  return renderScene(models, overlay);
 }

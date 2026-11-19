@@ -1,26 +1,27 @@
 import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import type { Group } from "three";
-import { BRIDGE, EDGES, NODES, type PathEdge } from "../data/pathGraph";
+import { EDGES, NODES, type PathEdge } from "../data/pathGraph";
 import { closestPointOnEdge, edgeLength, pointOnEdge, type Pt } from "../utils/geometry";
 import { MAP_H, MAP_W } from "../constants";
 
 const WALK_SPEED = 20;
 const SKATE_CHANCE = 0.5;
-const SKATE_BRIDGE_EDGE = EDGES.find((edge) =>
-  (edge.a === BRIDGE.from && edge.b === BRIDGE.to) ||
-  (edge.a === BRIDGE.to && edge.b === BRIDGE.from),
+const SKATE_ENTRY_POINT: Pt = { x: 126, y: 506 };
+const SKATE_ENTRY_EDGE = EDGES.find((edge) =>
+  (edge.a === "j11" && edge.b === "bW") ||
+  (edge.a === "bW" && edge.b === "j11"),
 );
-const SKATE_TRIGGER_DISTANCE = 12;
-const SKATE_TRIGGER_RESET_DISTANCE = 32;
+const SKATE_ENTRY_DISTANCE = 18;
+const SKATE_ENTRY_RESET_DISTANCE = 32;
 const JUNCTION_IDS = Object.values(NODES)
   .filter((node) => node.kind === "junction")
   .map((node) => node.id);
 
-if (!SKATE_BRIDGE_EDGE) {
-  throw new Error("Cannot locate the bridge path for the skating interaction.");
+if (!SKATE_ENTRY_EDGE) {
+  throw new Error("Cannot locate the path by the left side of the skating rink.");
 }
-const bridgeSkateEdge = SKATE_BRIDGE_EDGE;
+const skateEntryEdge = SKATE_ENTRY_EDGE;
 
 export interface WalkingProps {
   position: RefObject<HTMLDivElement | null>;
@@ -195,7 +196,7 @@ export function Walking({
     const initialNodeId = JUNCTION_IDS[Math.floor(Math.random() * JUNCTION_IDS.length)];
     const walkState: WalkState = { nodeId: initialNodeId, distanceOnEdge: 0 };
     let skateRoute: SkateRoute | null = null;
-    let hasTriedSkatingAtBridge = false;
+    let hasTriedSkatingAtEntrance = false;
     onNodeReachedRef.current?.(initialNodeId);
 
     let lastTimestamp: number | undefined;
@@ -268,19 +269,19 @@ export function Walking({
         }
 
         if (skateDurationSeconds && !wasSkating) {
-          const closestBridgePoint = closestPointOnEdge(bridgeSkateEdge, point);
-          const bridgeDistance = Math.hypot(
-            point.x - closestBridgePoint.x,
-            point.y - closestBridgePoint.y,
+          const entryDistance = Math.hypot(
+            point.x - SKATE_ENTRY_POINT.x,
+            point.y - SKATE_ENTRY_POINT.y,
           );
 
-          if (bridgeDistance > SKATE_TRIGGER_RESET_DISTANCE) {
-            hasTriedSkatingAtBridge = false;
+          if (entryDistance > SKATE_ENTRY_RESET_DISTANCE) {
+            hasTriedSkatingAtEntrance = false;
           } else if (
-            !hasTriedSkatingAtBridge &&
-            bridgeDistance <= SKATE_TRIGGER_DISTANCE
+            !hasTriedSkatingAtEntrance &&
+            walkState.edge === skateEntryEdge &&
+            entryDistance <= SKATE_ENTRY_DISTANCE
           ) {
-            hasTriedSkatingAtBridge = true;
+            hasTriedSkatingAtEntrance = true;
 
             if (Math.random() < SKATE_CHANCE) {
               skateRoute = createSkateRoute(point, timestamp, skateDurationSeconds * 1000);

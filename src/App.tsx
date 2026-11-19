@@ -1112,6 +1112,20 @@ function App() {
 
     if (!window.confirm(message)) return
 
+    const { data: relatedSubmissions, error: relatedSubmissionsError } = await supabase
+      .from('submissions')
+      .select('id, photo_path')
+      .eq('mission_id', mission.id)
+
+    if (relatedSubmissionsError) {
+      console.error('Error al buscar respuestas asociadas a la misión:', relatedSubmissionsError)
+      setNotice(tr(
+        'No se ha podido comprobar si la misión tiene respuestas asociadas.',
+        'No s’ha pogut comprovar si la missió té respostes associades.',
+      ))
+      return
+    }
+
     const { error } = await supabase
       .from('missions')
       .delete()
@@ -1126,15 +1140,75 @@ function App() {
       return
     }
 
+    const submissionIds = (relatedSubmissions ?? []).map((submission) => submission.id)
+    let cleanupError: string | null = null
+
+    if (submissionIds.length > 0) {
+      const { error: evaluationsError } = await supabase
+        .from('evaluations')
+        .delete()
+        .in('submission_id', submissionIds)
+
+      if (evaluationsError) {
+        console.error('Error al eliminar las evaluaciones de la misión:', evaluationsError)
+        cleanupError = evaluationsError.message
+      }
+
+      const { error: submissionsError } = await supabase
+        .from('submissions')
+        .delete()
+        .eq('mission_id', mission.id)
+
+      if (submissionsError) {
+        console.error('Error al eliminar las respuestas de la misión:', submissionsError)
+        cleanupError = submissionsError.message
+      }
+
+      const photoPaths = (relatedSubmissions ?? [])
+        .map((submission) => submission.photo_path)
+        .filter((path): path is string => Boolean(path))
+
+      if (photoPaths.length > 0) {
+        const { error: photosError } = await supabase.storage
+          .from('mission-photos')
+          .remove(photoPaths)
+
+        if (photosError) {
+          console.error('Error al eliminar las fotografías de la misión:', photosError)
+          cleanupError = photosError.message
+        }
+      }
+    }
+
+    const responseKeys = Object.entries(responses)
+      .filter(([, response]) => response.missionId === mission.id)
+      .map(([key]) => key)
+
+    setResponses((previous) => {
+      const updated = { ...previous }
+      responseKeys.forEach((key) => delete updated[key])
+      return updated
+    })
+    setEvaluations((previous) => {
+      const updated = { ...previous }
+      responseKeys.forEach((key) => delete updated[key])
+      return updated
+    })
+
     setMissions((previous) =>
       previous.filter((item) => item.id !== mission.id)
     )
 
     setEditingMission(null)
-    setNotice(tr(
-      `Misión «${mission.title}» eliminada correctamente.`,
-      `Missió «${mission.titleCa || mission.title}» eliminada correctament.`,
-    ))
+    setNotice(cleanupError
+      ? tr(
+        `La misión se eliminó, pero no se pudieron limpiar todos sus datos asociados: ${cleanupError}`,
+        `La missió s’ha eliminat, però no s’han pogut netejar totes les dades associades: ${cleanupError}`,
+      )
+      : tr(
+        `Misión «${mission.title}» y sus respuestas asociadas eliminadas correctamente.`,
+        `Missió «${mission.titleCa || mission.title}» i les seves respostes associades eliminades correctament.`,
+      ))
   }
 
   if (checkingSession) {
@@ -1414,6 +1488,12 @@ function App() {
   const selectedStatus = selectedDay !== null ? getHouseStatus(selectedDay) : null
   const currentResponse = selectedMissionId ? responses[getSubmissionKey(currentUser, selectedMissionId)] : undefined
   const currentEvaluation = selectedMissionId ? evaluations[getSubmissionKey(currentUser, selectedMissionId)] : undefined
+  const totalStars = currentUser
+    ? missions.reduce((total, mission) => {
+      if (!mission.assignedTo.includes(currentUser.toLowerCase())) return total
+      return total + (evaluations[getSubmissionKey(currentUser, mission.id)]?.stars ?? 0)
+    }, 0)
+    : 0
   const calendarDate = getCalendarDate()
   const currentCalendarDay = calendarDate.getMonth() === 11 ? calendarDate.getDate() : null
   const houseStates = initialHouses.map((house) => {
@@ -1492,9 +1572,9 @@ function App() {
             )
           })}
         </div>
-        <div className="star-counter" aria-label={tr('125 estrellas', '125 estrelles')}>
+        <div className="star-counter" aria-label={tr(`${totalStars} estrellas`, `${totalStars} estrelles`)}>
           <span className="star-icon" aria-hidden="true">⭐</span>
-          <span className="star-number">125</span>
+          <span className="star-number">{totalStars}</span>
           <span className="star-label">{tr('estrellas', 'estrelles')}</span>
         </div>
       </section>
