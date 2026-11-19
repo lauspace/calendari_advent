@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import type { Group } from "three";
 import { EDGES, NODES, type PathEdge } from "../data/pathGraph";
-import { closestPointOnEdge, edgeLength, pointOnEdge, type Pt } from "../utils/geometry";
+import { edgeLength, pointOnEdge, type Pt } from "../utils/geometry";
 import { MAP_H, MAP_W } from "../constants";
 
 const WALK_SPEED = 20;
