@@ -2143,6 +2143,34 @@ font-size: 0.73rem;
   flex: 0 0 64px;
 }
 
+.top-bar__account-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.top-bar__account-controls > .star-counter {
+  position: static;
+  z-index: auto;
+  height: 50px;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid #d5dfd8;
+  border-radius: 999px;
+  background: #fffdf7;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.top-bar__account-controls .star-icon {
+  font-size: 18px;
+}
+
+.top-bar__account-controls .star-number {
+  font-size: inherit;
+}
+
 .map-container--full {
   position: relative;
   display: block;
@@ -2172,18 +2200,23 @@ font-size: 0.73rem;
   z-index: 4;
 }
 
-.map-container--full > .star-counter {
-  right: 22px;
-  bottom: 22px;
-}
-
 @media (max-width: 520px) {
   .village-app--full-map > .top-bar {
     flex-basis: 58px;
   }
 
-  .map-container--full > .star-counter {
-    right: 12px;
-    bottom: 12px;
+  .top-bar__account-controls {
+    gap: 6px;
   }
+
+  .top-bar__account-controls > .star-counter {
+    height: 48px;
+    gap: 4px;
+    padding: 5px 8px;
+  }
+
+  .top-bar__account-controls .star-icon {
+    font-size: 16px;
+  }
+
 }

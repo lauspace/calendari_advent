@@ -1526,17 +1526,23 @@ function App() {
           <span className="brand-icon" aria-hidden="true">🌲</span>
           <span>{tr('Calendario de adviento', 'Calendari d’advent')}</span>
         </div>
-        <details className="account-menu">
-          <summary className="account-menu__trigger" aria-label={tr(`Opciones de ${currentUser}`, `Opcions de ${currentUser}`)}>
-            <span className="account-menu__avatar" aria-hidden="true">👩🏻</span>
-            <span>{currentUser}</span>
-            <span className="account-menu__chevron" aria-hidden="true">▾</span>
-          </summary>
-          <div className="account-menu__dropdown">
-            <button type="button" onClick={() => setActivePage('characters')}>{tr('Personajes', 'Personatges')}</button>
-            <button type="button" onClick={handleLogout}>{tr('Cerrar sesión', 'Tanca la sessió')}</button>
+        <div className="top-bar__account-controls">
+          <div className="star-counter" aria-label={tr(`${totalStars} estrellas`, `${totalStars} estrelles`)}>
+            <span className="star-icon" aria-hidden="true">⭐</span>
+            <span className="star-number">{totalStars}</span>
           </div>
-        </details>
+          <details className="account-menu">
+            <summary className="account-menu__trigger" aria-label={tr(`Opciones de ${currentUser}`, `Opcions de ${currentUser}`)}>
+              <span className="account-menu__avatar" aria-hidden="true">👩🏻</span>
+              <span>{currentUser}</span>
+              <span className="account-menu__chevron" aria-hidden="true">▾</span>
+            </summary>
+            <div className="account-menu__dropdown">
+              <button type="button" onClick={() => setActivePage('characters')}>{tr('Personajes', 'Personatges')}</button>
+              <button type="button" onClick={handleLogout}>{tr('Cerrar sesión', 'Tanca la sessió')}</button>
+            </div>
+          </details>
+        </div>
       </header>
 
       <section className="map-container map-container--full" aria-label={tr('Mapa del pueblo nevado', 'Mapa del poble nevat')}>
@@ -1571,11 +1577,6 @@ function App() {
               />
             )
           })}
-        </div>
-        <div className="star-counter" aria-label={tr(`${totalStars} estrellas`, `${totalStars} estrelles`)}>
-          <span className="star-icon" aria-hidden="true">⭐</span>
-          <span className="star-number">{totalStars}</span>
-          <span className="star-label">{tr('estrellas', 'estrelles')}</span>
         </div>
       </section>
 
