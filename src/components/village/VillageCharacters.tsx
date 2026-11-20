@@ -13,6 +13,8 @@ import { Walking } from "./movement/Walking";
 import { Sit, type SitPose } from "./movement/Sit";
 import { Skate } from "./movement/Skate";
 import { closestPointOnEdge } from "./utils/geometry";
+import { createWalkingStarts } from "./utils/walkingStarts";
+import type { WalkingStart } from "./utils/walkingStarts";
 import { isBenchOccupied, releaseBench, reserveBench } from "./interactions/benchReservations";
 import { assetUrl } from "../../lib/assetUrl";
 import { translate, type Language } from "../../i18n";
@@ -348,12 +350,14 @@ function CharacterWalker({
   character,
   refs,
   language,
+  initialStart,
   onSittingChange,
   onSkatingChange,
 }: {
   character: VillageCharacterData;
   refs: CharacterRefs;
   language: Language;
+  initialStart: WalkingStart;
   onSittingChange: (characterId: string, spot: BenchSpot | null) => void;
   onSkatingChange: (characterId: string, skating: boolean) => void;
 }) {
@@ -450,6 +454,7 @@ function CharacterWalker({
         position={position}
         heading={refs.heading}
         enabled={sittingAt === null}
+        initialStart={initialStart}
         skateDurationSeconds={character.actions.skate?.durationSeconds}
         onPositionChange={handlePositionChange}
         onSkatingChange={(skating) => onSkatingChange(character.id, skating)}
@@ -474,6 +479,10 @@ export function VillageCharacters({
       character: createRef<Group>(),
     })),
     [characters],
+  );
+  const initialStarts = useMemo(
+    () => createWalkingStarts(characters.length),
+    [characters.length],
   );
   const [sittingSpots, setSittingSpots] = useState<ReadonlyMap<string, BenchSpot>>(() => new Map());
   const [skatingCharacters, setSkatingCharacters] = useState<ReadonlySet<string>>(() => new Set());
@@ -514,13 +523,16 @@ export function VillageCharacters({
       <div style={{ position: "absolute", inset: 0 }}>
         {characters.map((character, index) => {
           const characterRefs = refs[index];
+          const initialStart = initialStarts[index];
           return characterRefs
+            && initialStart
             ? (
               <CharacterWalker
                 key={character.id}
                 character={character}
                 refs={characterRefs}
                 language={language}
+                initialStart={initialStart}
                 onSittingChange={handleSittingChange}
                 onSkatingChange={handleSkatingChange}
               />

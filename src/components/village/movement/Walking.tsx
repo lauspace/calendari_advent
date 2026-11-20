@@ -3,6 +3,7 @@ import type { RefObject } from "react";
 import type { Group } from "three";
 import { EDGES, NODES, type PathEdge } from "../data/pathGraph";
 import { edgeLength, pointOnEdge, type Pt } from "../utils/geometry";
+import type { WalkingStart } from "../utils/walkingStarts";
 import { MAP_H, MAP_W } from "../constants";
 
 const WALK_SPEED = 20;
@@ -27,6 +28,7 @@ export interface WalkingProps {
   position: RefObject<HTMLDivElement | null>;
   heading: RefObject<Group | null>;
   enabled: boolean;
+  initialStart?: WalkingStart;
   skateDurationSeconds?: number;
   onNodeReached?: (nodeId: string) => void;
   onPositionChange?: (point: Pt) => void;
@@ -166,6 +168,7 @@ export function Walking({
   position,
   heading,
   enabled,
+  initialStart,
   skateDurationSeconds,
   onNodeReached,
   onPositionChange,
@@ -193,8 +196,16 @@ export function Walking({
   }, [onSkatingChange]);
 
   useEffect(() => {
-    const initialNodeId = JUNCTION_IDS[Math.floor(Math.random() * JUNCTION_IDS.length)];
-    const walkState: WalkState = { nodeId: initialNodeId, distanceOnEdge: 0 };
+    const initialNodeId = initialStart?.fromNodeId
+      ?? JUNCTION_IDS[Math.floor(Math.random() * JUNCTION_IDS.length)]!;
+    const walkState: WalkState = initialStart
+      ? {
+        nodeId: initialStart.fromNodeId,
+        edge: initialStart.edge,
+        edgeFromNodeId: initialStart.fromNodeId,
+        distanceOnEdge: initialStart.distanceOnEdge,
+      }
+      : { nodeId: initialNodeId, distanceOnEdge: 0 };
     let skateRoute: SkateRoute | null = null;
     let hasTriedSkatingAtEntrance = false;
     onNodeReachedRef.current?.(initialNodeId);
@@ -296,7 +307,7 @@ export function Walking({
 
     frameId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frameId);
-  }, [heading, position, skateDurationSeconds]);
+  }, [heading, initialStart, position, skateDurationSeconds]);
 
   return null;
 }
