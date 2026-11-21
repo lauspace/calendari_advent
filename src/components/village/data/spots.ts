@@ -16,7 +16,7 @@ export const HOUSE_SPOTS: HouseSpot[] = [
   { id: 2, x: 600, y: 220, rotation: -Math.PI / 3.5, door: "h2", wallColor: "#426B57" },
   { id: 3, x: 513, y: 415, rotation: -Math.PI / 2.3, door: "h3", wallColor: "#6487A5" },
   { id: 4, x: 590, y: 472, rotation: -Math.PI / 8, door: "h4", wallColor: "#C46F52" },
-  { id: 5, x: 80, y: 300, rotation: 0, door: "h5", wallColor: "#9BAF91" },
+  { id: 5, x: 140, y: 310, rotation: -Math.PI / 4, door: "h5", wallColor: "#9BAF91" },
   { id: 6, x: 295, y: 313, rotation: 0, door: "h6", wallColor: "#426B70" },
   { id: 7, x: 740, y: 230, rotation: -Math.PI / 4, door: "h7", wallColor: "#D5A0A0" },
   { id: 8, x: 585, y: 323, rotation: -Math.PI / 5, door: "h8", wallColor: "#D4AE63" },
