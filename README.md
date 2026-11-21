@@ -57,17 +57,14 @@ workflow de despliegue la crea y la publica automáticamente.
 
 ## Supabase
 
-La aplicación necesita un proyecto de Supabase con las tablas, políticas de
-Row Level Security, perfiles, autenticación y almacenamiento utilizados por la
-aplicación. No incluyas nunca una clave `service_role` en el frontend. La clave
-publicable está diseñada para utilizarse en el navegador; el acceso a los datos
-debe protegerse con las políticas de Supabase.
+La aplicación necesita un proyecto de Supabase con sus tablas, autenticación,
+políticas de Row Level Security y almacenamiento. Para crear uno desde cero,
+sigue la guía de [configuración de Supabase](./supabase/README.md) y aplica la
+migración inicial de [`supabase/migrations/`](./supabase/migrations/).
 
-Las migraciones disponibles en `supabase/migrations/` añaden la configuración
-compartida del calendario y las columnas de texto bilingüe de las misiones.
-Aplica las migraciones que aún no estén aplicadas en el proyecto de Supabase
-antes de desplegar una versión que las necesite. La migración bilingüe añade
-columnas; no crea ni modifica misiones existentes.
+La clave publicable está diseñada para utilizarse en el navegador; no incluyas
+nunca una clave secreta `service_role` en el frontend. Protege el acceso a los
+datos con las políticas de Supabase.
 
 ## Publicación
 
