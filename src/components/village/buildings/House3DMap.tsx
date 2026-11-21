@@ -1,4 +1,4 @@
-import { Canvas, useThree } from "@react-three/fiber";
+import { useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
 import { useMemo } from "react";
@@ -78,39 +78,6 @@ function Houses({
         );
       })}
     </>
-  );
-}
-
-export function House3DMap({
-  litHouses,
-  highlightedHouse,
-  showHouses = true,
-}: {
-  litHouses?: number[];
-  highlightedHouse?: number;
-  showHouses?: boolean;
-}) {
-  return (
-    <Canvas
-      orthographic
-      camera={{
-        position: [0, CAMERA_HEIGHT, CAMERA_DEPTH],
-        rotation: [-Math.PI / 4, 0, 0],
-        zoom: PIXELS_PER_WORLD_UNIT,
-        near: 0.1,
-        far: 200,
-      }}
-      dpr={[1, 2]}
-      gl={{ alpha: true, antialias: true }}
-      aria-hidden="true"
-      style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none" }}
-    >
-      <House3DScene
-        litHouses={litHouses}
-        highlightedHouse={highlightedHouse}
-        showHouses={showHouses}
-      />
-    </Canvas>
   );
 }
 

@@ -4,17 +4,16 @@
  *
  *   <House3D variant={3} lit rotationX={0.35} />        // una casa
  *   <House3D variant={variantForDay(day)} />            // casa del día N (1..24)
- *   <HouseGallery />                                    // las 12 variantes, para verlas
  *
  * Origen del grupo = centro de la casa a nivel del suelo; Y arriba; la fachada mira a +Z.
  * rotationX / rotationY (radianes) giran toda la casa con su decoración. Para inclinar el
  * MAPA entero, pon la rotación en un <group> padre en vez de girar cada casa por separado.
  * =================================================================== */
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
-import { Canvas, useFrame, type ThreeEvent } from "@react-three/fiber";
+import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
+import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import {
-  G, M, VARIANTS, HOUSE_VARIANT_COUNT, getAssets, useHouseGlow,
+  G, M, getAssets, useHouseGlow,
   type Assets, type Dims, type V3,
 } from "./houses";
 
@@ -528,51 +527,5 @@ export function House3D({
         </>
       )}
     </group>
-  );
-}
-
-/* -------------------------- Galería de las 12 variantes -------------------------- */
-
-/** Las 12 casas en una cuadrícula con control de rotación X y luces, para revisarlas. */
-export function HouseGallery() {
-  const [deg, setDeg] = useState(0);
-  const [lit, setLit] = useState(true);
-  return (
-    <div style={{ position: "relative", width: "100%", height: "100vh", background: "#eef3f8" }}>
-      <div style={{ position: "absolute", zIndex: 1, top: 12, left: 12, display: "flex", gap: 12, alignItems: "center" }}>
-        <label>
-          Rotación X: {deg}°{" "}
-          <input type="range" min={-90} max={90} value={deg} onChange={(e: { target: { value: string } }) => setDeg(Number(e.target.value))} />
-        </label>
-        <button onClick={() => setLit((x) => !x)}>{lit ? "Apagar luces" : "Encender luces"}</button>
-      </div>
-      <Canvas shadows camera={{ position: [0, 15, 24], fov: 35 }}>
-        <color attach="background" args={["#eef3f8"]} />
-        <ambientLight intensity={0.9} color="#dbe7f5" />
-        <directionalLight
-          position={[-6, 12, 8]}
-          intensity={2.2}
-          castShadow
-          shadow-mapSize={[2048, 2048]}
-          shadow-camera-left={-18}
-          shadow-camera-right={18}
-          shadow-camera-top={14}
-          shadow-camera-bottom={-14}
-        />
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.001, 0]} receiveShadow>
-          <planeGeometry args={[80, 80]} />
-          <meshStandardMaterial color="#f6f8fb" roughness={1} />
-        </mesh>
-        {VARIANTS.slice(0, HOUSE_VARIANT_COUNT).map((_, i) => (
-          <House3D
-            key={i}
-            variant={i}
-            lit={lit}
-            rotationX={(deg * Math.PI) / 180}
-            position={[((i % 4) - 1.5) * 7, 0, (Math.floor(i / 4) - 1) * 7]}
-          />
-        ))}
-      </Canvas>
-    </div>
   );
 }

@@ -22,12 +22,6 @@ export interface VillageCharacterData {
   };
 }
 
-export interface WalkingCharacterData {
-  modelPath: string;
-  name: string;
-  walkAnimation: string;
-}
-
 export const CHARACTER_DISPLAY_SIZE = {
   mapHeight: 23,
   multiplier: 1.5,
