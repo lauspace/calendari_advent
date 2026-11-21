@@ -2,7 +2,7 @@ import { BENCH_SPOTS } from "./spots";
 import type { BenchSpot } from "./spots";
 import type { SitPose } from "../movement/Sit";
 import type { SkateMovementConfig } from "../movement/Skate";
-import { getCharacterName, getLanguage } from "../../../i18n";
+import { getCharacterName, getLanguage, type Language } from "../../../i18n";
 
 export interface VillageCharacterData {
   id: string;
@@ -478,11 +478,11 @@ export const VILLAGE_CHARACTERS: VillageCharacterData[] = [
   },
 ];
 
-export function getCharactersForUser(username?: string): VillageCharacterData[] {
+export function getCharactersForUser(username?: string, languageOverride?: Language): VillageCharacterData[] {
   const user = username?.trim().toLowerCase();
   if (!user) return VILLAGE_CHARACTERS;
   const owner = user === "jordi" ? "papa" : user === "caty" ? "mama" : user;
-  const language = getLanguage(user);
+  const language = languageOverride ?? getLanguage(user);
 
   return VILLAGE_CHARACTERS.filter((character) => {
     const folders = character.modelPath.split("/");

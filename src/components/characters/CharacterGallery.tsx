@@ -202,7 +202,7 @@ export default function CharacterGallery({
   username: string;
   language: Language;
 }) {
-  const characters = getCharactersForUser(username);
+  const characters = getCharactersForUser(username, language);
 
   return (
     <div className="characters-gallery">
